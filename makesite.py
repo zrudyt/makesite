@@ -2,6 +2,7 @@
 
 # The MIT License (MIT)
 #
+# Copyright (c) 2022 zrudyt <starbase.area51.gmail.com>
 # Copyright (c) 2018 Sunaina Pai
 #
 # Permission is hereby granted, free of charge, to any person obtaining
@@ -178,12 +179,35 @@ def main():
         'subtitle': 'Lorem Ipsum',
         'author': 'Admin',
         'site_url': 'http://localhost:8000',
+        'blog_dir': 'blog',
+        'blog_title': 'Blog',
+        'news_dir': 'news',
+        'news_title': 'News',
         'current_year': datetime.datetime.now().year
     }
 
     # If params.json exists, load it.
     if os.path.isfile('params.json'):
         params.update(json.loads(fread('params.json')))
+
+    # Create blog and news directories if they don't already exist.
+    blog_dir   = params.get('blog_dir')
+    blog_title = params.get('blog_title')
+    news_dir   = params.get('news_dir')
+    news_title = params.get('news_title')
+    if not os.path.isdir(f'content/{blog_dir}'):
+        try:
+            os.mkdir(f'content/{blog_dir}')
+        except:
+            log('PANIC: failed to create Blog directory: {}', f'content/{blog_dir}')
+            sys.exit(1)
+
+    if not os.path.isdir(f'content/{news_dir}'):
+        try:
+            os.mkdir(f'content/{news_dir}')
+        except:
+            log('PANIC: failed to create News directory: {}', f'content/{news_dir}')
+            sys.exit(1)
 
     # Load layouts.
     page_layout = fread('layout/page.html')
@@ -204,24 +228,24 @@ def main():
                page_layout, **params)
 
     # Create blogs.
-    blog_posts = make_pages('content/blog/*.md',
-                            '_site/blog/{{ slug }}/index.html',
-                            post_layout, blog='blog', **params)
-    news_posts = make_pages('content/news/*.html',
-                            '_site/news/{{ slug }}/index.html',
-                            post_layout, blog='news', **params)
+    blog_posts = make_pages(f'content/{blog_dir}/*.md',
+                            f'_site/{blog_dir}/' + '{{ slug }}/index.html',
+                            post_layout, blog=blog_dir, **params)
+    news_posts = make_pages(f'content/{news_dir}/*.md',
+                            f'_site/{news_dir}/' + '{{ slug }}/index.html',
+                            post_layout, blog=news_dir, **params)
 
     # Create blog list pages.
-    make_list(blog_posts, '_site/blog/index.html',
-              list_layout, item_layout, blog='blog', title='Blog', **params)
-    make_list(news_posts, '_site/news/index.html',
-              list_layout, item_layout, blog='news', title='News', **params)
+    make_list(blog_posts, f'_site/{blog_dir}/index.html',
+              list_layout, item_layout, blog=blog_dir, title=blog_title, **params)
+    make_list(news_posts, f'_site/{news_dir}/index.html',
+              list_layout, item_layout, blog=news_dir, title=news_title, **params)
 
     # Create RSS feeds.
-    make_list(blog_posts, '_site/blog/rss.xml',
-              feed_xml, item_xml, blog='blog', title='Blog', **params)
-    make_list(news_posts, '_site/news/rss.xml',
-              feed_xml, item_xml, blog='news', title='News', **params)
+    make_list(blog_posts, f'_site/{blog_dir}/rss.xml',
+              feed_xml, item_xml, blog=blog_dir, title=blog_title, **params)
+    make_list(news_posts, f'_site/{news_dir}/rss.xml',
+              feed_xml, item_xml, blog=news_dir, title=news_title, **params)
 
 
 # Test parameter to be set temporarily by unit tests.
