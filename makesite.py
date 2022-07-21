@@ -2,7 +2,12 @@
 
 # The MIT License (MIT)
 #
-# Copyright (c) 2022 zrudyt <starbase.area51.gmail.com>
+# Copyright (c) 2022 zrudyt <starbase.area51@gmail.com>
+# All rights reserved
+#
+# This software is a derivative of the original makesite.py.
+# The license text of the original makesite.py is included below.
+#
 # Copyright (c) 2018 Sunaina Pai
 #
 # Permission is hereby granted, free of charge, to any person obtaining
@@ -120,8 +125,8 @@ def read_content(filename):
 def render(template, **params):
     """Replace placeholders in template with values from params."""
     return re.sub(r'{{\s*([^}\s]+)\s*}}',
-                  lambda match: str(params.get(match.group(1), match.group(0))),
-                  template)
+                  lambda match:
+                  str(params.get(match.group(1), match.group(0))), template)
 
 
 def make_pages(src, dst, layout, **params):
@@ -191,22 +196,24 @@ def main():
         params.update(json.loads(fread('params.json')))
 
     # Create blog and news directories if they don't already exist.
-    blog_dir   = params.get('blog_dir')
+    blog_dir = params.get('blog_dir')
     blog_title = params.get('blog_title')
-    news_dir   = params.get('news_dir')
+    news_dir = params.get('news_dir')
     news_title = params.get('news_title')
     if not os.path.isdir(f'content/{blog_dir}'):
         try:
             os.mkdir(f'content/{blog_dir}')
-        except:
-            log('PANIC: failed to create Blog directory: {}', f'content/{blog_dir}')
+        except FileNotFoundError:
+            log('PANIC: failed to create Blog directory: {}'
+                f'content/{blog_dir}')
             sys.exit(1)
 
     if not os.path.isdir(f'content/{news_dir}'):
         try:
             os.mkdir(f'content/{news_dir}')
-        except:
-            log('PANIC: failed to create News directory: {}', f'content/{news_dir}')
+        except FileNotFoundError:
+            log('PANIC: failed to create News directory: {}',
+                f'content/{news_dir}')
             sys.exit(1)
 
     # Load layouts.
@@ -237,9 +244,11 @@ def main():
 
     # Create blog list pages.
     make_list(blog_posts, f'_site/{blog_dir}/index.html',
-              list_layout, item_layout, blog=blog_dir, title=blog_title, **params)
+              list_layout, item_layout,
+              blog=blog_dir, title=blog_title, **params)
     make_list(news_posts, f'_site/{news_dir}/index.html',
-              list_layout, item_layout, blog=news_dir, title=news_title, **params)
+              list_layout, item_layout,
+              blog=news_dir, title=news_title, **params)
 
     # Create RSS feeds.
     make_list(blog_posts, f'_site/{blog_dir}/rss.xml',
