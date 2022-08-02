@@ -90,9 +90,11 @@ def read_content(filename):
     # Read metadata and save it in a dictionary.
     date_slug = os.path.basename(filename).split('.')[0]
     match = re.search(r'^(?:(\d\d\d\d-\d\d-\d\d)-)?(.+)$', date_slug)
+    yy_mm_dd = match.group(1) or '1970-01-01'
     content = {
-        'date': match.group(1) or '1970-01-01',
-        'slug': match.group(2),
+        'date': yy_mm_dd,
+        'subdir': f'{yy_mm_dd[:4]}/{yy_mm_dd[5:7]}',
+        'slug': match.group(2)
     }
 
     # Read headers.
@@ -133,7 +135,7 @@ def make_pages(src, dst, layout, **params):
     """Generate pages from page content."""
     items = []
 
-    for src_path in glob.glob(src):
+    for src_path in glob.glob(src, recursive=True):
         content = read_content(src_path)
 
         page_params = dict(params, **content)
@@ -149,7 +151,7 @@ def make_pages(src, dst, layout, **params):
         dst_path = render(dst, **page_params)
         output = render(layout, **page_params)
 
-        log('Rendering {} => {} ...', src_path, dst_path)
+        log('Rendering {} => {} ...', src_path.replace(os.sep, '/'), dst_path)
         fwrite(dst_path, output)
 
     return sorted(items, key=lambda x: x['date'], reverse=True)
@@ -235,11 +237,13 @@ def main():
                page_layout, **params)
 
     # Create blogs.
-    blog_posts = make_pages(f'content/{blog_dir}/*.md',
-                            f'_site/{blog_dir}/' + '{{ slug }}/index.html',
+    blog_posts = make_pages(f'content/{blog_dir}/**/*.md',
+                            f'_site/{blog_dir}/'
+                            + '{{ subdir }}/{{ slug }}/index.html',
                             post_layout, blog=blog_dir, **params)
-    news_posts = make_pages(f'content/{news_dir}/*.md',
-                            f'_site/{news_dir}/' + '{{ slug }}/index.html',
+    news_posts = make_pages(f'content/{news_dir}/**/*.html',  # TODO: *.md
+                            f'_site/{news_dir}/'
+                            + '{{ subdir }}/{{ slug }}/index.html',
                             post_layout, blog=news_dir, **params)
 
     # Create blog list pages.
