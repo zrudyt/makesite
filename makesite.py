@@ -186,37 +186,16 @@ def main():
         'subtitle': 'Lorem Ipsum',
         'author': 'Admin',
         'site_url': 'http://localhost:8000',
-        'blog_dir': 'blog',
-        'blog_title': 'Blog',
-        'news_dir': 'news',
-        'news_title': 'News',
+        'blogs': {
+            1: {'name': 'Blog', 'dir': 'blog'},
+            2: {'name': 'News', 'dir': 'news'}
+        },
         'current_year': datetime.datetime.now().year
     }
 
     # If params.json exists, load it.
     if os.path.isfile('params.json'):
         params.update(json.loads(fread('params.json')))
-
-    # Create blog and news directories if they don't already exist.
-    blog_dir = params.get('blog_dir')
-    blog_title = params.get('blog_title')
-    news_dir = params.get('news_dir')
-    news_title = params.get('news_title')
-    if not os.path.isdir(f'content/{blog_dir}'):
-        try:
-            os.mkdir(f'content/{blog_dir}')
-        except FileNotFoundError:
-            log('PANIC: failed to create Blog directory: {}'
-                f'content/{blog_dir}')
-            sys.exit(1)
-
-    if not os.path.isdir(f'content/{news_dir}'):
-        try:
-            os.mkdir(f'content/{news_dir}')
-        except FileNotFoundError:
-            log('PANIC: failed to create News directory: {}',
-                f'content/{news_dir}')
-            sys.exit(1)
 
     # Load layouts.
     page_layout = fread('layout/page.html')
@@ -236,29 +215,28 @@ def main():
     make_pages('content/[!_]*.html', '_site/{{ slug }}/index.html',
                page_layout, **params)
 
-    # Create blogs.
-    blog_posts = make_pages(f'content/{blog_dir}/**/*.md',
-                            f'_site/{blog_dir}/'
-                            + '{{ subdir }}/{{ slug }}/index.html',
-                            post_layout, blog=blog_dir, **params)
-    news_posts = make_pages(f'content/{news_dir}/**/*.md',
-                            f'_site/{news_dir}/'
-                            + '{{ subdir }}/{{ slug }}/index.html',
-                            post_layout, blog=news_dir, **params)
+    # loop through each blog defined in params
+    for key, blog in params['blogs'].items():
 
-    # Create blog list pages.
-    make_list(blog_posts, f'_site/{blog_dir}/index.html',
-              list_layout, item_layout,
-              blog=blog_dir, title=blog_title, **params)
-    make_list(news_posts, f'_site/{news_dir}/index.html',
-              list_layout, item_layout,
-              blog=news_dir, title=news_title, **params)
+        # Check if source content directory exists
+        if not os.path.isdir(f"content/{blog['dir']}"):
+            log("WARNING: directory does not exist: content/{}", blog['dir'])
 
-    # Create RSS feeds.
-    make_list(blog_posts, f'_site/{blog_dir}/rss.xml',
-              feed_xml, item_xml, blog=blog_dir, title=blog_title, **params)
-    make_list(news_posts, f'_site/{news_dir}/rss.xml',
-              feed_xml, item_xml, blog=news_dir, title=news_title, **params)
+        # Create blog
+        blog_posts = make_pages(f"content/{blog['dir']}/**/*.md",
+                                f"_site/{blog['dir']}/"
+                                + "{{ subdir }}/{{ slug }}/index.html",
+                                post_layout, blog=blog['dir'], **params)
+
+        # Create blog list page
+        make_list(blog_posts, f"_site/{blog['dir']}/index.html",
+                  list_layout, item_layout,
+                  blog=blog['dir'], title=blog['name'], **params)
+
+        # Create RSS feed
+        make_list(blog_posts, f"_site/{blog['dir']}/rss.xml",
+                  feed_xml, item_xml,
+                  blog=blog['dir'], title=blog['name'], **params)
 
 
 # Test parameter to be set temporarily by unit tests.
