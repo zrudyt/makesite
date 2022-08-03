@@ -241,7 +241,7 @@ def main():
                             f'_site/{blog_dir}/'
                             + '{{ subdir }}/{{ slug }}/index.html',
                             post_layout, blog=blog_dir, **params)
-    news_posts = make_pages(f'content/{news_dir}/**/*.html',  # TODO: *.md
+    news_posts = make_pages(f'content/{news_dir}/**/*.md',
                             f'_site/{news_dir}/'
                             + '{{ subdir }}/{{ slug }}/index.html',
                             post_layout, blog=news_dir, **params)
