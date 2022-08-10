@@ -84,6 +84,10 @@ def rfc_2822_format(date_str):
 
 def read_content(filename):
     """Read content and metadata from file into a dictionary."""
+    # only process HTML and Markdown files
+    if not filename.endswith(('.html', '.md')) or os.path.isdir(filename):
+        return None
+
     # Read file content.
     text = fread(filename)
 
@@ -106,7 +110,7 @@ def read_content(filename):
     text = text[end:]
 
     # Convert Markdown content to HTML.
-    if filename.endswith(('.md', '.mkd', '.mkdn', '.mdown', '.markdown')):
+    if filename.endswith(('.md')):
         try:
             if _test == 'ImportError':
                 raise ImportError('Error forced by test')
@@ -137,6 +141,8 @@ def make_pages(src, dst, layout, **params):
 
     for src_path in glob.glob(src, recursive=True):
         content = read_content(src_path)
+        if not content:
+            continue
 
         page_params = dict(params, **content)
 
@@ -151,7 +157,7 @@ def make_pages(src, dst, layout, **params):
         dst_path = render(dst, **page_params)
         output = render(layout, **page_params)
 
-        log('Rendering {} => {} ...', src_path.replace(os.sep, '/'), dst_path)
+        log('Rendering {} => {} ...', src_path, dst_path)
         fwrite(dst_path, output)
 
     return sorted(items, key=lambda x: x['date'], reverse=True)
@@ -223,7 +229,7 @@ def main():
             log("WARNING: directory does not exist: content/{}", blog['dir'])
 
         # Create blog
-        blog_posts = make_pages(f"content/{blog['dir']}/**/*.md",
+        blog_posts = make_pages(f"content/{blog['dir']}/**/*",
                                 f"_site/{blog['dir']}/"
                                 + "{{ subdir }}/{{ slug }}/index.html",
                                 post_layout, blog=blog['dir'], **params)
