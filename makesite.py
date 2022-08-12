@@ -180,6 +180,24 @@ def make_list(posts, dst, list_layout, item_layout, **params):
     fwrite(dst_path, output)
 
 
+def make_xref(src, dst, layout, **params):
+    xref = {}
+
+    for src_path in glob.glob(src, recursive=True):
+    for post in posts:
+        # cross reference tags to posts
+        if 'tags' in page_params:
+            for tag in page_params.get('tags').split():
+                if tag not in xref:
+                    xref[tag] = []
+                xref[tag].append(src_path)
+
+    if xref:
+        print(json.dumps(xref, indent=2))
+
+    return
+
+
 def main():
     # Create a new _site directory from scratch.
     if os.path.isdir('_site'):
