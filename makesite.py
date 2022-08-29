@@ -40,6 +40,7 @@ import glob
 import sys
 import json
 import datetime
+from pathlib import Path
 
 
 def fread(filename):
@@ -157,10 +158,28 @@ def make_pages(src, dst, layout, **params):
         dst_path = render(dst, **page_params)
         output = render(layout, **page_params)
 
+        if 'tags' in content:
+            p = Path(dst_path).parts
+            add_to_alltags(p, **page_params)
+
         log('Rendering {} => {} ...', src_path, dst_path)
         fwrite(dst_path, output)
 
     return sorted(items, key=lambda x: x['date'], reverse=True)
+
+
+def add_to_alltags(tagdir, **params):
+    # t = re.sub(r"(\S+)", r'<a href="/tag_\1.html">\1</a> ', val)
+    # content['tags_html'] = f'<p class="tags">Tags: {t}</p>'
+    for t in params['tags'].split(' '):
+        if len(tagdir) < 2:
+            break
+        tagfile = f"{tagdir[0]}/{tagdir[1]}/tag_{t}.html"
+        if t not in params['alltags']:
+            params['alltags'][t] = []
+        l = [ tagfile, params['title'] ]
+        params['alltags'][t].append(l)
+    return
 
 
 def make_list(posts, dst, list_layout, item_layout, **params):
@@ -180,21 +199,24 @@ def make_list(posts, dst, list_layout, item_layout, **params):
     fwrite(dst_path, output)
 
 
-def make_xref(src, dst, layout, **params):
-    xref = {}
+def make_list_by_tag(posts, dst, list_layout, item_layout, **params):
+    """Generate list page for a single tag."""
+    for tag in params['alltags']:
+        posts_by_tag = []
+        dst_by_tag = f"{dst}/tag_{tag}.html"
+        for post in posts:
+            if tag in post:
+                posts_by_tag.append(post)
+        make_list(posts_by_tag, dst_by_tag, list_layout, item_layout, **params)
 
-    for src_path in glob.glob(src, recursive=True):
-    for post in posts:
-        # cross reference tags to posts
-        if 'tags' in page_params:
-            for tag in page_params.get('tags').split():
-                if tag not in xref:
-                    xref[tag] = []
-                xref[tag].append(src_path)
 
-    if xref:
-        print(json.dumps(xref, indent=2))
-
+def make_xrefs(alltags):
+    for tag in alltags:
+        outfile = f"content/tag_{tag}.md"
+        s = ""
+        for fileinfo in alltags[tag]:
+            s += f"* [{fileinfo[1]}]({fileinfo[0]})\n"
+        fwrite(outfile, s)
     return
 
 
@@ -214,7 +236,8 @@ def main():
             1: {'name': 'Blog', 'dir': 'blog'},
             2: {'name': 'News', 'dir': 'news'}
         },
-        'current_year': datetime.datetime.now().year
+        'current_year': datetime.datetime.now().year,
+        'alltags': {}
     }
 
     # If params.json exists, load it.
@@ -257,12 +280,21 @@ def main():
                   list_layout, item_layout,
                   blog=blog['dir'], title=blog['name'], **params)
 
+        # Create blog list page for each tag
+        make_list_by_tag(blog_posts, f"_site/{blog['dir']}/",
+                  list_layout, item_layout,
+                  blog=blog['dir'], title=blog['name'], **params)
+
         # Create RSS feed
         make_list(blog_posts, f"_site/{blog['dir']}/rss.xml",
                   feed_xml, item_xml,
                   blog=blog['dir'], title=blog['name'], **params)
 
+    # make_xrefs(params['alltags'])
+    # make_pages('content/tag_*.md', '_site/{{ slug }}.html',
+    #            page_layout, **params)
 
+    print(params['alltags'])
 # Test parameter to be set temporarily by unit tests.
 _test = None
 
