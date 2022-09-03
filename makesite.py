@@ -156,11 +156,9 @@ def make_pages(src, dst, layout, **params):
         items.append(content)
 
         dst_path = render(dst, **page_params)
+        page_params['tags_html'] = process_tags(
+                Path(dst_path).parts, **page_params)
         output = render(layout, **page_params)
-
-        if 'tags' in content:
-            p = Path(dst_path).parts
-            add_to_alltags(p, **page_params)
 
         log('Rendering {} => {} ...', src_path, dst_path)
         fwrite(dst_path, output)
@@ -168,18 +166,21 @@ def make_pages(src, dst, layout, **params):
     return sorted(items, key=lambda x: x['date'], reverse=True)
 
 
-def add_to_alltags(tagdir, **params):
-    # t = re.sub(r"(\S+)", r'<a href="/tag_\1.html">\1</a> ', val)
-    # content['tags_html'] = f'<p class="tags">Tags: {t}</p>'
-    for t in params['tags'].split(' '):
-        if len(tagdir) < 2:
-            break
+def process_tags(tagdir, **params):
+    if not params.get('tags') or len(tagdir) < 2:
+        return ""
+
+    tags_html = '<p>Tags:'
+    for t in params.get('tags').split(' '):
         tagfile = f"{tagdir[0]}/{tagdir[1]}/tag_{t}.html"
+        tagfile_url = f"/{tagdir[1]}/tag_{t}.html"
         if t not in params['alltags']:
             params['alltags'][t] = []
         l = [ tagfile, params['title'] ]
+        tags_html += f'&nbsp;&nbsp;<a href="{tagfile_url}">{t}</a>'
         params['alltags'][t].append(l)
-    return
+    tags_html += '</p>'
+    return tags_html
 
 
 def make_list(posts, dst, list_layout, item_layout, **params):
@@ -265,6 +266,8 @@ def main():
     # loop through each blog defined in params
     for key, blog in params['blogs'].items():
 
+        params['alltags'] = {}
+
         # Check if source content directory exists
         if not os.path.isdir(f"content/{blog['dir']}"):
             log("WARNING: directory does not exist: content/{}", blog['dir'])
@@ -294,7 +297,8 @@ def main():
     # make_pages('content/tag_*.md', '_site/{{ slug }}.html',
     #            page_layout, **params)
 
-    print(params['alltags'])
+    print(json.dumps(params['alltags'], indent=2))
+
 # Test parameter to be set temporarily by unit tests.
 _test = None
 
