@@ -213,7 +213,7 @@ def make_list_by_tag(posts, dst, list_layout, item_layout, **params):
                   title=f"Posts tagged as '{tag}'", **params)
 
 
-def make_alltags(blogdir, dst, **params):
+def make_list_alltags(blogdir, dst, layout, **params):
     """Generate list page for all tags."""
     d = params['alltags']
     html = "<!-- title: All tags -->\n<h1>All tags</h1>\n<p>\n  <ul>\n"
@@ -224,6 +224,8 @@ def make_alltags(blogdir, dst, **params):
         html += f'    <li><a href="{tagurl}">{tag}</a> : {nstr}\n'
     html += "  </ul>\n</p>"
     fwrite(dst, html)
+    make_pages(f"_site/{blogdir}/alltags.html",
+               f"_site/{blogdir}/alltags.html", layout, **params)
     return
 
 
@@ -299,13 +301,8 @@ def main():
                          blog=blog['dir'], **params)
 
         # Create page with consolidated list of all tags
-        # TODO: combine next few lines to directly generate _site alltags
-        make_alltags(blog['dir'], f"content/{blog['dir']}/alltags.html",
-                     **params)
-        make_pages(f"content/{blog['dir']}/alltags.html",
-                   f"_site/{blog['dir']}/alltags.html", page_layout, **params)
-        if os.path.isfile(f"content/{blog['dir']}/alltags.html"):
-            os.remove(f"content/{blog['dir']}/alltags.html")
+        make_list_alltags(blog['dir'], f"_site/{blog['dir']}/alltags.html",
+                     page_layout, **params)
 
         # Create RSS feed
         make_list(blog_posts, f"_site/{blog['dir']}/rss.xml",
