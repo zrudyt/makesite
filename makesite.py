@@ -186,11 +186,21 @@ def process_tags(src_path, dst_path, **params):
 def make_list(posts, dst, list_layout, item_layout, **params):
     """Generate list page for a blog."""
     items = []
+    subdir = ""
     for post in posts:
         item_params = dict(params, **post)
-        if not re.search(r"allposts.html", dst):
+        if re.search(r"allposts.html", dst):
+            if item_params['subdir'] != subdir:
+                subdir = item_params['subdir']
+                date = datetime.datetime.strptime(subdir, '%Y/%m')
+                formatted_date = date.strftime('%B %Y')
+                subdir_html = f"<h3>{formatted_date}</h3><br>"
+            else:
+                subdir_html = ""
+            item = subdir_html + render(item_layout, **item_params)
+        else:
             item_params['summary'] = truncate(post['content'])
-        item = render(item_layout, **item_params)
+            item = render(item_layout, **item_params)
         items.append(item)
 
     params['content'] = ''.join(items)
