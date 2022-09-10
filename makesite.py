@@ -156,8 +156,8 @@ def make_pages(src, dst, layout, **params):
         items.append(content)
 
         dst_path = render(dst, **page_params)
-        page_params['tags_html'] = process_tags(
-                Path(dst_path).parts, **page_params)
+        page_params['tags_html'] = process_tags(src_path, dst_path,
+                                                **page_params)
         output = render(layout, **page_params)
 
         log('Rendering {} => {} ...', src_path, dst_path)
@@ -166,19 +166,19 @@ def make_pages(src, dst, layout, **params):
     return sorted(items, key=lambda x: x['date'], reverse=True)
 
 
-def process_tags(tagdir, **params):
-    if not params.get('tags') or len(tagdir) < 2:
+def process_tags(src_path, dst_path, **params):
+    dpp = Path(dst_path).parts
+    if len(dpp) < 4 or 'tags' not in params:
         return ""
-
     tags_html = '<p>Tags:'
     for t in params.get('tags').split(' '):
-        tagfile = f"{tagdir[0]}/{tagdir[1]}/tag_{t}.html"
-        tagfile_url = f"/{tagdir[1]}/tag_{t}.html"
         if t not in params['alltags']:
-            params['alltags'][t] = []
-        l = [ tagfile, params['title'] ]
-        tags_html += f'&nbsp;&nbsp;<a href="{tagfile_url}">{t}</a>'
-        params['alltags'][t].append(l)
+            params['alltags'][t] = {}
+        tagfile_web = f"/{dpp[1]}/tag_{t}.html"
+        tagfile_local = f"{dpp[0]}/{tagfile_web}"
+        params['alltags'][t]['url'] = tagfile_local
+        tags_html += f'&nbsp;&nbsp;<a href="{tagfile_web}">{t}</a>'
+        params['alltags'][t][dst_path] = params['title']
     tags_html += '</p>'
     return tags_html
 
@@ -188,7 +188,8 @@ def make_list(posts, dst, list_layout, item_layout, **params):
     items = []
     for post in posts:
         item_params = dict(params, **post)
-        item_params['summary'] = truncate(post['content'])
+        if not re.search(r"allposts.html", dst):
+            item_params['summary'] = truncate(post['content'])
         item = render(item_layout, **item_params)
         items.append(item)
 
@@ -206,28 +207,33 @@ def make_list_by_tag(posts, dst, list_layout, item_layout, **params):
         posts_by_tag = []
         dst_by_tag = f"{dst}/tag_{tag}.html"
         for post in posts:
-            if tag in post:
+            if post.get('tags') and tag in post.get('tags').split(' '):
                 posts_by_tag.append(post)
-        make_list(posts_by_tag, dst_by_tag, list_layout, item_layout, **params)
+        make_list(posts_by_tag, dst_by_tag, list_layout, item_layout,
+                  title=f"Posts tagged as '{tag}'", **params)
 
 
-def make_xrefs(alltags):
-    for tag in alltags:
-        outfile = f"content/tag_{tag}.md"
-        s = ""
-        for fileinfo in alltags[tag]:
-            s += f"* [{fileinfo[1]}]({fileinfo[0]})\n"
-        fwrite(outfile, s)
+def make_alltags(blogdir, dst, **params):
+    """Generate list page for all tags."""
+    d = params['alltags']
+    html = "<!-- title: All tags -->\n<h1>All tags</h1>\n<p>\n  <ul>\n"
+    for tag in d:
+        n = len(d[tag]) - 1
+        nstr = f"{n} posts" if n > 1 else f"1 post"
+        tagurl = f"/{blogdir}/tag_{tag}.html"
+        html += f'    <li><a href="{tagurl}">{tag}</a> : {nstr}\n'
+    html += "  </ul>\n</p>"
+    fwrite(dst, html)
     return
 
 
 def main():
-    # Create a new _site directory from scratch.
+    # Create a new _site directory from scratch
     if os.path.isdir('_site'):
         shutil.rmtree('_site')
     shutil.copytree('static', '_site')
 
-    # Default parameters.
+    # Default parameters
     params = {
         'base_path': '',
         'subtitle': 'Lorem Ipsum',
@@ -237,27 +243,27 @@ def main():
             1: {'name': 'Blog', 'dir': 'blog'},
             2: {'name': 'News', 'dir': 'news'}
         },
-        'current_year': datetime.datetime.now().year,
-        'alltags': {}
+        'current_year': datetime.datetime.now().year
     }
 
-    # If params.json exists, load it.
+    # If params.json exists, load it
     if os.path.isfile('params.json'):
         params.update(json.loads(fread('params.json')))
 
-    # Load layouts.
+    # Load layouts
     page_layout = fread('layout/page.html')
     post_layout = fread('layout/post.html')
     list_layout = fread('layout/list.html')
     item_layout = fread('layout/item.html')
+    allposts_layout = fread('layout/allposts.html')
     feed_xml = fread('layout/feed.xml')
     item_xml = fread('layout/item.xml')
 
-    # Combine layouts to form final layouts.
+    # Combine layouts to form final layouts
     post_layout = render(page_layout, content=post_layout)
     list_layout = render(page_layout, content=list_layout)
 
-    # Create site pages.
+    # Create site pages
     make_pages('content/_index.html', '_site/index.html',
                page_layout, **params)
     make_pages('content/[!_]*.html', '_site/{{ slug }}/index.html',
@@ -283,23 +289,31 @@ def main():
                   list_layout, item_layout,
                   blog=blog['dir'], title=blog['name'], **params)
 
+        make_list(blog_posts, f"_site/{blog['dir']}/allposts.html",
+                  list_layout, allposts_layout,
+                  blog=blog['dir'], title="All Posts", **params)
+
         # Create blog list page for each tag
         make_list_by_tag(blog_posts, f"_site/{blog['dir']}/",
-                  list_layout, item_layout,
-                  blog=blog['dir'], title=blog['name'], **params)
+                         list_layout, item_layout,
+                         blog=blog['dir'], **params)
+
+        # Create page with consolidated list of all tags
+        # TODO: combine next few lines to directly generate _site alltags
+        make_alltags(blog['dir'], f"content/{blog['dir']}/alltags.html",
+                     **params)
+        make_pages(f"content/{blog['dir']}/alltags.html",
+                   f"_site/{blog['dir']}/alltags.html", page_layout, **params)
+        if os.path.isfile(f"content/{blog['dir']}/alltags.html"):
+            os.remove(f"content/{blog['dir']}/alltags.html")
 
         # Create RSS feed
         make_list(blog_posts, f"_site/{blog['dir']}/rss.xml",
                   feed_xml, item_xml,
                   blog=blog['dir'], title=blog['name'], **params)
 
-    # make_xrefs(params['alltags'])
-    # make_pages('content/tag_*.md', '_site/{{ slug }}.html',
-    #            page_layout, **params)
 
-    print(json.dumps(params['alltags'], indent=2))
-
-# Test parameter to be set temporarily by unit tests.
+# Test parameter to be set temporarily by unit tests
 _test = None
 
 
