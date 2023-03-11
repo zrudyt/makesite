@@ -6,6 +6,8 @@ rootdir=$(dirname "$0")
 blogdir="$rootdir/content/blog"    # TODO make blog an optional command line parameter
 post_template="$rootdir/.post"
 
+die () { echo "ERROR: $1"; exit 1; }
+
 show_usage () {
 cat <<- EOF
 	Usage: $(basename "$0") <command> [parameter 1] [parameter 2] [...] [parameter n]
@@ -13,9 +15,12 @@ cat <<- EOF
 	where <command> is:
 	
 	    post [-h]  --> default file type is Markdown, unless '-h' for HTML
-	    edit title --> title is either filename, filename.md, or filename.html
-	    list
+	    list [pattern]
+	    edit n
+	    delete n
 	    rebuild
+	    publish
+	    help
 EOF
 }
 
@@ -32,12 +37,12 @@ EOF
 #   Hello world!
 # ----------------------------------------------------------------------------
 do_post () {
-    if [ $# -eq 1 ]; then
+    if [ $# -eq 0 ]; then
         fmt="md"
-    elif [ "$2" = '-h' ]; then
+    elif [ "$1" = '-h' ]; then
         fmt="html"
     else
-        { echo "ERROR: Invalid parameter to post: $2"; exit 1; }
+        die "Invalid parameter to: $1"
     fi
 
     subdir="$blogdir/$(date +%Y-%m)"
@@ -57,42 +62,70 @@ do_post () {
 
 
 # ----------------------------------------------------------------------------
-do_edit () {
-    [ $# -eq 2 ] || { echo "PANIC: 'edit' requires 1 parameter"; exit 2; }
+do_list () {
+    [ $# -eq 0 ] || die "expected 0 parameters (got $#)"
+
+    posts=$(find "$blogdir" -type f \( -name "*\.md" -o -name "*\.html" \))
+    if [ $# -eq 1 ]; then
+        echo "$posts" | grep -n "$1"
+    else
+        echo "$posts" | grep -n "^"
+    fi
 }
 
 
 # ----------------------------------------------------------------------------
-do_list () {
-    [ $# -eq 1 ] || { echo "PANIC: 'list' requires 0 parameters"; exit 2; }
+do_edit () {
+    [ $# -ne 1 ] && die "expected 1 parameter (got $#)"
+
+    posts=$(find "$blogdir" -type f \( -name "*\.md" -o -name "*\.html" \))
+
+    post=$(echo "$posts" | grep -n "^" | grep "^$1:" | sed "s/^$1://")
+    "$EDITOR" "$post" || exit 1
+}
+
+
+# ----------------------------------------------------------------------------
+do_delete () {
+    [ $# -eq 0 ] && die "expected 1 or more parameters (got $#)"
+
+    posts=$(find "$blogdir" -type f \( -name "*\.md" -o -name "*\.html" \))
+
+    for del; do
+        file=$(echo "$posts" | grep -n "^" | grep "^$del:" | sed "s/^$del://")
+        rm -i "$file"
+    done
+}
+
+
+# ----------------------------------------------------------------------------
+do_rebuild () {
+    ./makesite.py
 }
 
 
 # ----------------------------------------------------------------------------
 do_publish () {
-    if [ $# -eq 2 ]; then
-        loc="md"
-    elif [ "$2" = '-h' ]; then
-        fmt="html"
-    else
-        { echo "ERROR: Invalid parameter to post: $2"; exit 1; }
-    fi
+    true   # placeholder for future code
 }
 
 
 # ----------------------------------------------------------------------------
 #
 # ----------------------------------------------------------------------------
-[ $# -eq 0 ] && { echo "Not enough parameters"; show_usage; exit 2; }
+[ $# -eq 0 ] && { show_usage; exit 2; }
 [ -e ".config" ] && . ".config"
 
 cmd="$1"
+shift
 
-case "$1" in
+case "$cmd" in
     post )    do_post "$@";;
-    edit )    do_edit "$@";;
     list )    do_list "$@";;
+    edit )    do_edit "$@";;
+    delete )  do_delete "$@";;
+    rebuild ) do_rebuild "$@";;
     publish ) do_publish "$@";;
     help )    show_usage; exit 2;;
-       * )    echo "Illegal command '$1'"; show_usage; exit 2;;
+       * )    die "Illegal command: '$cmd'";;
 esac
