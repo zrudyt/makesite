@@ -48,10 +48,11 @@ do_post () {
 
     cp "$post_template.$fmt" "$tmpfile" || exit 1
     "$EDITOR" "$tmpfile" || exit 1
-    filename=$(grep -m1 "^<!-- title: " "$tmpfile" | tr 'A-Z' 'a-z') | sed \
-        -e "s/<!-- title: \(.*\) -->/\\1/" \
-	-e "s/ /-/g")
+    filename=$(grep -m1 '<!-- title: ' "$tmpfile" \
+        | tr '[:upper:]' '[:lower:]' \
+        | sed -e "s/<!-- title: \(.*\) -->/\\1/" -e "s/ /-/g")
     mv "$tmpfile" "$subdir/$slug-$filename.$fmt" || exit 1
+    ./makesite.py
 }
 
 
@@ -68,16 +69,30 @@ do_list () {
 
 
 # ----------------------------------------------------------------------------
+do_publish () {
+    if [ $# -eq 2 ]; then
+        loc="md"
+    elif [ "$2" = '-h' ]; then
+        fmt="html"
+    else
+        { echo "ERROR: Invalid parameter to post: $2"; exit 1; }
+    fi
+}
+
+
+# ----------------------------------------------------------------------------
 #
 # ----------------------------------------------------------------------------
 [ $# -eq 0 ] && { echo "Not enough parameters"; show_usage; exit 2; }
+[ -e ".config" ] && . ".config"
 
 cmd="$1"
 
 case "$1" in
-    post ) do_post "$@";;
-    edit ) do_edit "$@";;
-    list ) do_list "$@";;
-    help ) show_usage; exit 2;;
-       * ) echo "Illegal command '$1'"; show_usage; exit 2;;
+    post )    do_post "$@";;
+    edit )    do_edit "$@";;
+    list )    do_list "$@";;
+    publish ) do_publish "$@";;
+    help )    show_usage; exit 2;;
+       * )    echo "Illegal command '$1'"; show_usage; exit 2;;
 esac
