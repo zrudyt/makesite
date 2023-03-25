@@ -2,7 +2,7 @@
 
 # The MIT License (MIT)
 #
-# Copyright (c) 2022 zrudyt <starbase.area51@gmail.com>
+# Copyright (c) 2022-2023 zrudyt zrudyt@hotmail.com>
 # All rights reserved
 #
 # This software is a derivative of the original makesite.py.
@@ -98,7 +98,7 @@ def read_content(filename):
     yy_mm_dd = match.group(1) or '1970-01-01'
     content = {
         'date': yy_mm_dd,
-        'subdir': f'{yy_mm_dd[:4]}/{yy_mm_dd[5:7]}',
+        'subdir': f'{yy_mm_dd[:7]}',
         'slug': match.group(2)
     }
 
@@ -192,7 +192,7 @@ def make_list(posts, dst, list_layout, item_layout, **params):
         if re.search(r"allposts.html", dst):
             if item_params['subdir'] != subdir:
                 subdir = item_params['subdir']
-                date = datetime.datetime.strptime(subdir, '%Y/%m')
+                date = datetime.datetime.strptime(subdir, '%Y-%m')
                 formatted_date = date.strftime('%B %Y')
                 subdir_html = f"<h3>{formatted_date}</h3><br>"
             else:
