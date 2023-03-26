@@ -1,22 +1,63 @@
 #!/bin/sh
 
-# ----------------------------------------------------------------------------
+# shellcheck shell=dash
+
+# ======================================================================
+#  dvr_comskip.sh - remove DVR+ commercials and convert to h264
+# ======================================================================
+#
+#  Copyright (c) 2023 zrudyt <zrudyt@ at hotmail dot com>
+#  All rights reserved
+#
+# ----------------------------------------------------------------------
+#  This script ...
+#
 #   <!-- title: Insert post title here -->
 #   <!-- tags: space delimited list of applicable tags -->
 #   
-#   Markdown text starts here
+#   Installation notes:
+#
+#   This script (bb.sh), makesite.py along with all related content,
+#   layout and configuration files must be in the same directory tree. 
+#
+#   TODO separate executable and content dirs
+#   TODO combine params.json and .config into one single file
 # ----------------------------------------------------------------------------
+#  The MIT License (MIT)
+#
+#  Permission is hereby granted, free of charge, to any person obtaining
+#  a copy of this software and associated documentation files (the
+#  "Software"), to deal in the Software without restriction, including
+#  without limitation the rights to use, copy, modify, merge, publish,
+#  distribute, sublicense, and/or sell copies of the Software, and to
+#  permit persons to whom the Software is furnished to do so, subject to
+#  the following conditions:
+#
+#  The above copyright notice and this permission notice shall be
+#  included in all copies or substantial portions of the Software.
+#
+#  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+#  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+#  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+#  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+#  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+#  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+#  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# ----------------------------------------------------------------------
 
 # ----------------------------------------------------------------------------
 #   U S E R   D E F I N E D   P A R A M E T E R S
 # ----------------------------------------------------------------------------
-
 # webserver parameters used in 'do_publish()' to be defined in '.config'
 REMOTE_USER=""
 REMOTE_HOST=""
 REMOTE_PATH=""
 LOCAL_WWW=""
 
+
+# ----------------------------------------------------------------------
+#  G L O B A L   P A R A M E T E R S   A N D   V A R I A B L E S
+# ----------------------------------------------------------------------
 # parameters that shouldn't need to change, but can be overridden in '.config'
 d_blog="content/blog"           # TODO make blog an optional command line parameter
 d_drafts="drafts"               # must be outside 'content' dir
@@ -38,26 +79,6 @@ die () { redprint "ERROR: $1"; exit 1; }
 
 
 # ----------------------------------------------------------------------------
-show_usage () {
-pgm=$(basename "$0") 
-cat <<- EOF
-	Usage:
-
-	    "$pgm" post [-h]  --> file type is Markdown, unless '-h' for HTML
-	    "$pgm" list [string_in_filename]
-	    "$pgm" search [pattern]
-	    "$pgm" tag [pattern]
-	    "$pgm" edit n
-	    "$pgm" rename n
-	    "$pgm" delete n [n1] [n2] [...]
-	    "$pgm" makesite
-	    "$pgm" publish
-	    "$pgm" help
-EOF
-}
-
-
-# ----------------------------------------------------------------------------
 get_posts () {
     find "$d_blog" "$d_drafts" \
         -type f \( -name "*\.md" -o -name "*\.html" \) | sed "s/\.\///"
@@ -75,6 +96,7 @@ get_filename_from_title () {
 
 
 # ----------------------------------------------------------------------------
+# TODO split edit and post
 do_post () {
     if [ $# -eq 0 ]; then
         fmt="md"
@@ -116,7 +138,7 @@ do_post () {
 do_list () {
     [ $# -lt 2 ] || die "'list' expected 0 or 1 parameter, but got $#"
 
-    [ $# -eq 1 ] && string="$1" || string='^'
+    [ $# -eq 1 ] && string="$1" || string='.'
     get_posts | grep -n "$string"
 }
 
@@ -133,7 +155,7 @@ do_search () {
 
 
 # ----------------------------------------------------------------------------
-do_tag () {
+do_tags () {
     [ $# -eq 1 ] || die "'tag' expected 1 parameter, but got $#"
 
     find "$d_blog" "$d_drafts" \
@@ -146,7 +168,8 @@ do_tag () {
 do_edit () {
     [ $# -ne 1 ] && die "'edit' expected 1 parameter, but got $#"
 
-    post=$(get_posts | grep -n "^" | grep "^$1:" | sed "s/^$1://")
+    #post=$(get_posts | grep -n "." | grep "^$1:" | sed "s/^$1://")
+    post=$(get_posts | nl -s':' -w1 | grep "^$1:" | sed "s/^$1://")
     [ -z "$post" ] && die "Item $1 does not exist"
 
     "$EDITOR" "$post" || exit 1
@@ -176,7 +199,7 @@ do_edit () {
 do_rename () {
     [ $# -ne 1 ] && die "'rename' expected 1 parameter, but got $#"
 
-    post=$(get_posts | grep -n "^" | grep "^$1:" | sed "s/^$1://")
+    post=$(get_posts | grep -n "." | grep "^$1:" | sed "s/^$1://")
     [ -z "$post" ] && die "Item $1 does not exist"
     die "TODO: rename command not implemented yet"
     # get filename from title
@@ -188,7 +211,7 @@ do_delete () {
     [ $# -eq 0 ] && die "'delete' expected 1 or more parameters, but got $#"
 
     for i; do
-        file=$(get_posts | grep -n "^" | grep "^$i:" | sed "s/^$i://")
+        file=$(get_posts | grep -n "." | grep "^$i:" | sed "s/^$i://")
         [ -n "$file" ] && { rm -i "$file" || exit 1; }
     done
 }
@@ -234,34 +257,61 @@ do_publish () {
 
 
 # ----------------------------------------------------------------------------
+show_usage () {
+pgm="$(basename "$0")" 
+cat <<- EOF
+	Usage:
+
+	    "$pgm" post [-h]  --> file type is Markdown, unless '-h' for HTML
+	    "$pgm" list [string_in_filename]
+	    "$pgm" search [pattern]
+	    "$pgm" tags [pattern]
+	    "$pgm" edit n
+	    "$pgm" rename n
+	    "$pgm" delete n [n1] [n2] [...]
+	    "$pgm" makesite
+	    "$pgm" publish
+	    "$pgm" help
+EOF
+}
+
+
+# ----------------------------------------------------------------------------
+main () {
+    d_root="$(dirname "$0")" 
+    [ -f ".config" ] && . "./.config"
+    [ -d "$d_drafts" ] || mkdir -p "$d_drafts"
+
+    # sanity cheques
+    [ $# -eq 0 ] && { show_usage; exit 2; }
+    if [ -z "$EDITOR" ]; then
+        EDITOR="vi"
+        yellowprint "\$EDITOR not set - assuming vi"
+        yellowprint "Add next line to '.config' to define your editor (ex. nano)"
+        cyanprint "    EDITOR='nano'\n"
+        printf "Hit [Enter] to continue"
+        read -r key
+    fi
+
+    cmd="$1"
+    shift
+
+    case "$cmd" in
+        post )     do_post "$@";;
+        list )     do_list "$@";;
+        search )   do_search "$@";;
+        tags)      do_tags "$@";;
+        edit )     do_edit "$@";;
+        rename )   do_rename "$@";;
+        delete )   do_delete "$@";;
+        makesite ) ./makesite.py;;
+        publish )  do_publish "$@";;
+        help )     show_usage; exit 2;;
+           * )     die "Illegal command: '$cmd'";;
+    esac
+}
+
+# ----------------------------------------------------------------------------
 #
 # ----------------------------------------------------------------------------
-[ -f ".config" ] && . "./.config"
-[ -d "$d_drafts" ] || mkdir -p "$d_drafts"
-
-# sanity cheques
-[ $# -eq 0 ] && { show_usage; exit 2; }
-if [ -z "$EDITOR" ]; then
-    EDITOR="vi"
-    yellowprint "\$EDITOR not set - assuming vi"
-    yellowprint "Add next line to '.config' to define your editor (ex. nano)"
-    cyanprint "    EDITOR='nano'\n"
-    printf "Hit [Enter] to continue"
-    read -r key
-fi
-
-cmd="$1"
-shift
-
-case "$cmd" in
-    post )     do_post "$@";;
-    list )     do_list "$@";;
-    search )   do_search "$@";;
-    edit )     do_edit "$@";;
-    rename )   do_rename "$@";;
-    delete )   do_delete "$@";;
-    makesite ) ./makesite.py;;
-    publish )  do_publish "$@";;
-    help )     show_usage; exit 2;;
-       * )     die "Illegal command: '$cmd'";;
-esac
+main "$@"
