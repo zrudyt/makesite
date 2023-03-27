@@ -3,25 +3,28 @@
 # shellcheck shell=dash
 
 # ======================================================================
-#  dvr_comskip.sh - remove DVR+ commercials and convert to h264
+#  ss.sh - shell site : simple shell blogging front end for makesite
 # ======================================================================
-#
 #  Copyright (c) 2023 zrudyt <zrudyt@ at hotmail dot com>
 #  All rights reserved
-#
 # ----------------------------------------------------------------------
 #  This script ...
 #
-#   <!-- title: Insert post title here -->
-#   <!-- tags: space delimited list of applicable tags -->
-#   
-#   Installation notes:
-#
-#   This script (bb.sh), makesite.py along with all related content,
-#   layout and configuration files must be in the same directory tree. 
-#
 #   TODO separate executable and content dirs
 #   TODO combine params.json and .config into one single file
+#
+#   <!-- title: Insert post title here -->
+#   <!-- tags: space delimited list of applicable tags -->
+#
+#   Pre-requisites:
+#
+#   - POSIX shell (sh, ash, dash, etc.) or better (bash, zsh, etc.)
+#   - Python 3.6 or better tu run makesite.py
+
+#   Installation notes:
+#
+#     This script (ss.sh), makesite.py along with all related content,
+#     layout and configuration files must be in the same directory tree.
 # ----------------------------------------------------------------------------
 #  The MIT License (MIT)
 #
@@ -48,12 +51,11 @@
 # ----------------------------------------------------------------------------
 #   U S E R   D E F I N E D   P A R A M E T E R S
 # ----------------------------------------------------------------------------
-# webserver parameters used in 'do_publish()' to be defined in '.config'
+# webserver parameters used in 'cmd_publish()' to be defined in '.config'
 REMOTE_USER=""
 REMOTE_HOST=""
 REMOTE_PATH=""
 LOCAL_WWW=""
-
 
 # ----------------------------------------------------------------------
 #  G L O B A L   P A R A M E T E R S   A N D   V A R I A B L E S
@@ -66,8 +68,6 @@ post_template=".post"
 
 set -o nounset
 
-
-# ----------------------------------------------------------------------------
 redprint ()    { printf "\033[1;31m%s\033[0m\n" "$*" >&2; }
 greenprint ()  { printf "\033[1;32m%s\033[0m\n" "$*" >&2; }
 yellowprint () { printf "\033[1;33m%s\033[0m\n" "$*" >&2; }
@@ -77,27 +77,39 @@ ghostprint ()  { printf "\033[1;30m%s\033[0m\n" "$*" >&2; }
 
 die () { redprint "ERROR: $1"; exit 1; }
 
-
 # ----------------------------------------------------------------------------
-get_posts () {
+get_all_posts () {
     find "$d_blog" "$d_drafts" \
-        -type f \( -name "*\.md" -o -name "*\.html" \) | sed "s/\.\///"
+        -type f \( -name "*\.md" -o -name "*\.html" \) | sed "s/^\.\///"
 }
-
 
 # ----------------------------------------------------------------------------
-get_filename_from_title () {
-    [ $# -eq 1 ] || die "'get_filename_from_title' expected 1 parameter, but got $#"
-    s=$(grep -m1 '<!-- title: ' "$1" | sed -e "s/<!-- title: \(.*\) -->/\\1/")
-    # sanitize filename
-    echo "$s" | sed -e 's/[^A-Za-z0-9._-]/-/g' -e 's/-\+/-/g' \
-        tr '[:upper:]' '[:lower:]' 
+get_post_by_id () {
+    # TODO combine grep and sed
+    post=$(get_all_posts | grep -n "." | grep "^$1:" | sed "s/^$1://")
+    #post=$(get_all_posts | nl -s':' -w1 | grep "^$1:" | sed "s/^$1://")
+    [ -z "$post" ] && die "Item $1 does not exist"  # TODO move to caller
+    echo "$post"
 }
 
+# ----------------------------------------------------------------------------
+extract_title_from_post () {
+    [ $# -eq 1 ] || die "'extract_title_from_post' expected 1 parameter, but got $#"
+    title=$(grep -m1 '<!-- title: ' "$1" | sed -e "s/<!-- title: \(.*\) -->/\\1/")
+    [ -z "$title" ] && die "Post $1 does not have a title"  # TODO move to caller
+    echo "$title"
+}
+
+# ----------------------------------------------------------------------------
+sanitize_string () {
+    [ $# -eq 1 ] || die "'sanitize_string' expected 1 parameter, but got $#"
+    echo "$1" | sed -e 's/[^A-Za-z0-9._-]/-/g' -e 's/-\+/-/g' \
+        | tr '[:upper:]' '[:lower:]'
+}
 
 # ----------------------------------------------------------------------------
 # TODO split edit and post
-do_post () {
+cmd_post () {
     if [ $# -eq 0 ]; then
         fmt="md"
     elif [ "$1" = '-h' ]; then
@@ -114,7 +126,7 @@ do_post () {
 
     cp "$post_template.$fmt" "$tmpfile" || exit 1
     "$EDITOR" "$tmpfile" || exit 1
-    filename=$(get_filename_from_title "$tmpfile")
+    filename=$(sanitize_string "$tmpfile")
     post="${slug}-${filename}.${fmt}"
 
     printf "(P)ost or (D)raft or (A)bort: "
@@ -133,18 +145,16 @@ do_post () {
     fi
 }
 
-
 # ----------------------------------------------------------------------------
-do_list () {
+cmd_list () {
     [ $# -lt 2 ] || die "'list' expected 0 or 1 parameter, but got $#"
 
     [ $# -eq 1 ] && string="$1" || string='.'
-    get_posts | grep -n "$string"
+    get_all_posts | grep -n "$string"
 }
 
-
 # ----------------------------------------------------------------------------
-do_search () {
+cmd_search () {
     [ $# -eq 1 ] || die "'search' expected 1 parameter, but got $#"
 
     find "$d_blog" "$d_drafts" \
@@ -153,9 +163,8 @@ do_search () {
         | grep -n '^'
 }
 
-
 # ----------------------------------------------------------------------------
-do_tags () {
+cmd_tags () {
     [ $# -eq 1 ] || die "'tag' expected 1 parameter, but got $#"
 
     find "$d_blog" "$d_drafts" \
@@ -163,19 +172,15 @@ do_tags () {
         -exec grep -Hn "$1" "{}" \;
 }
 
-
 # ----------------------------------------------------------------------------
-do_edit () {
+cmd_edit () {
     [ $# -ne 1 ] && die "'edit' expected 1 parameter, but got $#"
 
-    #post=$(get_posts | grep -n "." | grep "^$1:" | sed "s/^$1://")
-    post=$(get_posts | nl -s':' -w1 | grep "^$1:" | sed "s/^$1://")
-    [ -z "$post" ] && die "Item $1 does not exist"
-
+    post="$(get_post_by_id "$1")"
     "$EDITOR" "$post" || exit 1
 
-    d_post=$(readlink -f $(dirname "$post")) 
-    d_drafts=$(readlink -f "$d_drafts") 
+    d_post=$(readlink -f $(dirname "$post"))
+    d_drafts=$(readlink -f "$d_drafts")
     printf "(P)ost or (D)raft: "
     read -r key
 
@@ -194,28 +199,35 @@ do_edit () {
     done
 }
 
+# ----------------------------------------------------------------------------
+cmd_rename () {
+    [ $# -ne 2 ] && die "'rename' expected 2 parameters, but got $#"
+
+    post="$(get_post_by_id "$1")"  # content/blog/2023-03/2023-03-12-a-post.md
+
+    # you can do this all in sed but it's ugly and hard to tweak leter on
+    postfile="${post##*/}"                    # 2023-03-12-a-post.md
+    postdir="${post%/*}"                      # content/blog/2023-03
+    ext="${post##*.}"                         # md
+    slug="$(echo "$postfile" | cut -b1-10)"   # 2023-03-12
+    # title="$(echo "$postfile" | cut -b12-)"   # a-post.md
+    # title="${title%.*}"                       # a-post
+    newtitle="$(sanitize_string "$2")"
+    echo "mv"
+    echo "    $post"
+    echo "    ${postdir}/${slug}-${newtitle}.${ext}"
+    exit 1
+  }
 
 # ----------------------------------------------------------------------------
-do_rename () {
-    [ $# -ne 1 ] && die "'rename' expected 1 parameter, but got $#"
-
-    post=$(get_posts | grep -n "." | grep "^$1:" | sed "s/^$1://")
-    [ -z "$post" ] && die "Item $1 does not exist"
-    die "TODO: rename command not implemented yet"
-    # get filename from title
-}
-
-
-# ----------------------------------------------------------------------------
-do_delete () {
+cmd_delete () {
     [ $# -eq 0 ] && die "'delete' expected 1 or more parameters, but got $#"
 
     for i; do
-        file=$(get_posts | grep -n "." | grep "^$i:" | sed "s/^$i://")
+        file=$(get_all_posts | grep -n "." | grep "^$i:" | sed "s/^$i://")
         [ -n "$file" ] && { rm -i "$file" || exit 1; }
     done
 }
-
 
 # ----------------------------------------------------------------------------
 # -r recursive -t preserve modification time -z compress
@@ -238,7 +250,7 @@ do_delete () {
 # no ssh needed
 # rsync --delete -rtzvcl "_site/" "$LOCAL_WWW"  # -ravc
 # ----------------------------------------------------------------------------
-do_publish () {
+cmd_publish () {
     [ $# -lt 2 ] || die "'publish' expected 0 or 1 parameter, but got $#"
 
     if [ $# -eq 0 ]; then
@@ -255,10 +267,9 @@ do_publish () {
     fi
 }
 
-
 # ----------------------------------------------------------------------------
 show_usage () {
-pgm="$(basename "$0")" 
+pgm="$(basename "$0")"
 cat <<- EOF
 	Usage:
 
@@ -275,10 +286,10 @@ cat <<- EOF
 EOF
 }
 
-
 # ----------------------------------------------------------------------------
 main () {
-    d_root="$(dirname "$0")" 
+    d_root="$(dirname "$0")"
+    cd "$d_root" || exit 1
     [ -f ".config" ] && . "./.config"
     [ -d "$d_drafts" ] || mkdir -p "$d_drafts"
 
@@ -297,15 +308,15 @@ main () {
     shift
 
     case "$cmd" in
-        post )     do_post "$@";;
-        list )     do_list "$@";;
-        search )   do_search "$@";;
-        tags)      do_tags "$@";;
-        edit )     do_edit "$@";;
-        rename )   do_rename "$@";;
-        delete )   do_delete "$@";;
+        post )     cmd_post "$@";;
+        list )     cmd_list "$@";;
+        search )   cmd_search "$@";;
+        tags)      cmd_tags "$@";;
+        edit )     cmd_edit "$@";;
+        rename )   cmd_rename "$@";;
+        delete )   cmd_delete "$@";;
         makesite ) ./makesite.py;;
-        publish )  do_publish "$@";;
+        publish )  cmd_publish "$@";;
         help )     show_usage; exit 2;;
            * )     die "Illegal command: '$cmd'";;
     esac
