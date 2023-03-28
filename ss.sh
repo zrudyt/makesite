@@ -79,154 +79,154 @@ die () { redprint "ERROR: $1"; exit 1; }
 
 # ----------------------------------------------------------------------------
 get_all_posts () {
-    find "$d_blog" "$d_drafts" \
-        -type f \( -name "*\.md" -o -name "*\.html" \) | sed "s/^\.\///"
-}
+  find "$d_blog" "$d_drafts" \
+    -type f \( -name "*\.md" -o -name "*\.html" \) | sed "s/^\.\///" \
+    | nl -s': ' -w4
+  }
 
 # ----------------------------------------------------------------------------
 get_post_by_id () {
-    # TODO combine grep and sed
-    post=$(get_all_posts | grep -n "." | grep "^$1:" | sed "s/^$1://")
-    #post=$(get_all_posts | nl -s':' -w1 | grep "^$1:" | sed "s/^$1://")
-    [ -z "$post" ] && die "Item $1 does not exist"  # TODO move to caller
-    echo "$post"
+  get_all_posts | sed -e "/^ *$1: /!d" -e "s/^.*: //"
 }
 
 # ----------------------------------------------------------------------------
 extract_title_from_post () {
-    [ $# -eq 1 ] || die "'extract_title_from_post' expected 1 parameter, but got $#"
-    title=$(grep -m1 '<!-- title: ' "$1" | sed -e "s/<!-- title: \(.*\) -->/\\1/")
-    [ -z "$title" ] && die "Post $1 does not have a title"  # TODO move to caller
-    echo "$title"
+  grep -m1 '<!-- title: ' "$1" | sed -e "s/<!-- title: \(.*\) -->/\\1/"
 }
 
 # ----------------------------------------------------------------------------
 sanitize_string () {
-    [ $# -eq 1 ] || die "'sanitize_string' expected 1 parameter, but got $#"
-    echo "$1" | sed -e 's/[^A-Za-z0-9._-]/-/g' -e 's/-\+/-/g' \
-        | tr '[:upper:]' '[:lower:]'
+  echo "$1" | sed -e 's/[^A-Za-z0-9._-]/-/g' -e 's/-\+/-/g' \
+    | tr '[:upper:]' '[:lower:]'
 }
 
 # ----------------------------------------------------------------------------
 # TODO split edit and post
 cmd_post () {
-    if [ $# -eq 0 ]; then
-        fmt="md"
-    elif [ "$1" = '-h' ]; then
-        fmt="html"
-    else
-        die "Invalid parameter: $1"
-    fi
+  if [ $# -eq 0 ]; then
+    fmt="md"
+  elif [ "$1" = '-h' ]; then
+    fmt="html"
+  else
+    die "Invalid parameter: $1"
+  fi
 
-    subdir="$d_blog/$(date +%Y-%m)"
-    slug=$(date +%Y-%m-%d)
+  subdir="$d_blog/$(date +%Y-%m)"
+  slug=$(date +%Y-%m-%d)
 
-    tmpfile="$(mktemp -u -t "post.XXXXXX").$fmt"
-    [ -d "$subdir" ] || mkdir -p "$subdir"
+  tmpfile="$(mktemp -u -t "post.XXXXXX").$fmt"
+  [ -d "$subdir" ] || mkdir -p "$subdir"
 
-    cp "$post_template.$fmt" "$tmpfile" || exit 1
-    "$EDITOR" "$tmpfile" || exit 1
-    filename=$(sanitize_string "$tmpfile")
-    post="${slug}-${filename}.${fmt}"
+  cp "$post_template.$fmt" "$tmpfile" || exit 1
+  "$EDITOR" "$tmpfile" || exit 1
+  filename=$(sanitize_string "$tmpfile")
+  post="${slug}-${filename}.${fmt}"
 
-    printf "(P)ost or (D)raft or (A)bort: "
-    read -r key
+  printf "(P)ost or (D)raft or (A)bort: "
+  read -r key
 
-    if [ "$key" = 'p' ]; then
-        mv "$tmpfile" "$subdir/$post" || exit 1
-        echo "$subdir/$post"
-    elif [ "$key" = 'd' ]; then
-        mv "$tmpfile" "$d_drafts/$post" || exit 1
-        echo "$d_drafts/$post"
-    elif [ "$key" = 'a' ]; then
-        rm -i "$tmpfile" || exit 1
-    else
-        echo "Invalid response - post saved as '$tmpfile'"
-    fi
+  if [ "$key" = 'p' ]; then
+    mv "$tmpfile" "$subdir/$post" || exit 1
+    echo "$subdir/$post"
+  elif [ "$key" = 'd' ]; then
+    mv "$tmpfile" "$d_drafts/$post" || exit 1
+    echo "$d_drafts/$post"
+  elif [ "$key" = 'a' ]; then
+    rm -i "$tmpfile" || exit 1
+  else
+    echo "Invalid response - post saved as '$tmpfile'"
+  fi
 }
 
 # ----------------------------------------------------------------------------
 cmd_list () {
-    [ $# -lt 2 ] || die "'list' expected 0 or 1 parameter, but got $#"
+  [ $# -lt 2 ] || die "'list' expected 0 or 1 parameter, but got $#"
 
-    [ $# -eq 1 ] && string="$1" || string='.'
-    get_all_posts | grep -n "$string"
+  if [ $# -eq 1 ]; then
+    get_all_posts | grep "$1"
+  else
+    get_all_posts
+  fi  
 }
 
 # ----------------------------------------------------------------------------
 cmd_search () {
-    [ $# -eq 1 ] || die "'search' expected 1 parameter, but got $#"
+  [ $# -eq 1 ] || die "'search' expected 1 parameter, but got $#"
 
-    find "$d_blog" "$d_drafts" \
-        -type f \( -name "*\.md" -o -name "*\.html" \) \
-        -exec grep -H "$1" "{}" \; \
-        | grep -n '^'
+  get_all_posts | while read -r post; do
+    post_id="${post%%:*}"
+    post_file="${post#*: }"
+    match="$(grep "$1" "$post_file" | sed "s/^/       /")"
+    [ -n "$match" ] && printf "%4d: %s:\n%s\n" "$post_id" "$post_file" "$match"
+  done
 }
 
 # ----------------------------------------------------------------------------
 cmd_tags () {
-    [ $# -eq 1 ] || die "'tag' expected 1 parameter, but got $#"
+  [ $# -eq 1 ] || die "'tag' expected 1 parameter, but got $#"
 
-    find "$d_blog" "$d_drafts" \
-        -type f \( -name "*\.md" -o -name "*\.html" \) \
-        -exec grep -Hn "$1" "{}" \;
+  get_all_posts | while read -r post; do
+    post_id="${post%%:*}"
+    post_file="${post#*: }"
+    match="$(grep "<!-- tags:.* $1 .*-->" "$post_file" | sed "s/^/       /")"
+    [ -n "$match" ] && printf "%4d: %s:\n" "$post_id" "$post_file"
+  done
 }
 
 # ----------------------------------------------------------------------------
 cmd_edit () {
-    [ $# -ne 1 ] && die "'edit' expected 1 parameter, but got $#"
+  [ $# -ne 1 ] && die "'edit' expected 1 parameter, but got $#"
 
-    post="$(get_post_by_id "$1")"
-    "$EDITOR" "$post" || exit 1
+  post="$(get_post_by_id "$1")"
+  [ -z "$post" ] && die "Post $1 does not exist"
 
-    d_post=$(readlink -f $(dirname "$post"))
-    d_drafts=$(readlink -f "$d_drafts")
-    printf "(P)ost or (D)raft: "
-    read -r key
+  "$EDITOR" "$post" || exit 1
 
-    valid=0
-    while [ "$valid" -eq 0 ]; do
-        if [ "$key" = 'p' ]; then
-            echo "file://$(readlink -f "$subdir/$post")"
-            valid=1
-        elif [ "$key" = 'd' ]; then
-            [ "$d_post" != "$d_drafts" ] && { mv "$post" "$d_drafts" || exit 1; }
-            echo "file://$(readlink -f "$post")"
-            valid=1
-        else
-            echo "Invalid response - try again"
-        fi
-    done
+  d_post=$(readlink -f $(dirname "$post"))
+  d_drafts=$(readlink -f "$d_drafts")
+  printf "(P)ost or (D)raft: "
+  read -r key
+
+  valid=0
+  while [ "$valid" -eq 0 ]; do
+    if [ "$key" = 'p' ]; then
+      echo "file://$(readlink -f "$subdir/$post")"
+      valid=1
+    elif [ "$key" = 'd' ]; then
+      [ "$d_post" != "$d_drafts" ] && { mv "$post" "$d_drafts" || exit 1; }
+      echo "file://$(readlink -f "$post")"
+      valid=1
+    else
+      echo "Invalid response - try again"
+    fi
+  done
 }
 
 # ----------------------------------------------------------------------------
 cmd_rename () {
-    [ $# -ne 2 ] && die "'rename' expected 2 parameters, but got $#"
+  [ $# -ne 2 ] && die "'rename' expected 2 parameters, but got $#"
 
-    post="$(get_post_by_id "$1")"  # content/blog/2023-03/2023-03-12-a-post.md
+  post="$(get_post_by_id "$1")"  # content/blog/2023-03/2023-03-12-a-post.md
+  [ -z "$post" ] && die "Post $1 does not exist"
 
-    # you can do this all in sed but it's ugly and hard to tweak leter on
-    postfile="${post##*/}"                    # 2023-03-12-a-post.md
-    postdir="${post%/*}"                      # content/blog/2023-03
-    ext="${post##*.}"                         # md
-    slug="$(echo "$postfile" | cut -b1-10)"   # 2023-03-12
-    # title="$(echo "$postfile" | cut -b12-)"   # a-post.md
-    # title="${title%.*}"                       # a-post
-    newtitle="$(sanitize_string "$2")"
-    echo "mv"
-    echo "    $post"
-    echo "    ${postdir}/${slug}-${newtitle}.${ext}"
-    exit 1
-  }
+  # you can do this all in sed but it's ugly and hard to tweak leter on
+  postfile="${post##*/}"                    # 2023-03-12-a-post.md
+  postdir="${post%/*}"                      # content/blog/2023-03
+  ext="${post##*.}"                         # md
+  slug="$(echo "$postfile" | cut -b1-10)"   # 2023-03-12
+  newtitle="$(sanitize_string "$2")"
+
+  mv -i "$post" "${postdir}/${slug}-${newtitle}.${ext}" || exit 1
+}
 
 # ----------------------------------------------------------------------------
 cmd_delete () {
-    [ $# -eq 0 ] && die "'delete' expected 1 or more parameters, but got $#"
+  [ $# -eq 0 ] && die "'delete' expected 1 or more parameters, but got $#"
 
-    for i; do
-        file=$(get_all_posts | grep -n "." | grep "^$i:" | sed "s/^$i://")
-        [ -n "$file" ] && { rm -i "$file" || exit 1; }
-    done
+  for i; do
+    file=$(get_all_posts | grep -n "." | grep "^$i:" | sed "s/^$i://")
+    [ -n "$file" ] && { rm -i "$file" || exit 1; }
+  done
 }
 
 # ----------------------------------------------------------------------------
@@ -251,20 +251,20 @@ cmd_delete () {
 # rsync --delete -rtzvcl "_site/" "$LOCAL_WWW"  # -ravc
 # ----------------------------------------------------------------------------
 cmd_publish () {
-    [ $# -lt 2 ] || die "'publish' expected 0 or 1 parameter, but got $#"
+  [ $# -lt 2 ] || die "'publish' expected 0 or 1 parameter, but got $#"
 
-    if [ $# -eq 0 ]; then
-        [ -z "$REMOTE_USER" ] && die "Set 'REMOTE_USER=' in '.config'"
-        [ -z "$REMOTE_HOST" ] && die "Set 'REMOTE_HOST=' in '.config'"
-        [ -z "$REMOTE_PATH" ] && die "Set 'REMOTE_PATH=' in '.config'"
-        rsync --delete -rtzvcl "$d_site/" \
-            "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}/${d_site}"
-    elif [ "$1" = "local" ]; then
-        [ -z "$LOCAL_WWW" ] && die "Set 'LOCAL_WWW=' in '.config'"
-        rsync --delete -rtzvcl "$d_site/" "${LOCAL_WWW}/{$d_site}"  # -ravc
-    else
-        die "Invalid parameter: $1"
-    fi
+  if [ $# -eq 0 ]; then
+    [ -z "$REMOTE_USER" ] && die "Set 'REMOTE_USER=' in '.config'"
+    [ -z "$REMOTE_HOST" ] && die "Set 'REMOTE_HOST=' in '.config'"
+    [ -z "$REMOTE_PATH" ] && die "Set 'REMOTE_PATH=' in '.config'"
+    rsync --delete -rtzvcl "$d_site/" \
+      "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}/${d_site}"
+        elif [ "$1" = "local" ]; then
+          [ -z "$LOCAL_WWW" ] && die "Set 'LOCAL_WWW=' in '.config'"
+          rsync --delete -rtzvcl "$d_site/" "${LOCAL_WWW}/{$d_site}"  # -ravc
+        else
+          die "Invalid parameter: $1"
+  fi
 }
 
 # ----------------------------------------------------------------------------
@@ -288,37 +288,37 @@ EOF
 
 # ----------------------------------------------------------------------------
 main () {
-    d_root="$(dirname "$0")"
-    cd "$d_root" || exit 1
-    [ -f ".config" ] && . "./.config"
-    [ -d "$d_drafts" ] || mkdir -p "$d_drafts"
+  d_root="$(dirname "$0")"
+  cd "$d_root" || exit 1
+  [ -f ".config" ] && . "./.config"
+  [ -d "$d_drafts" ] || mkdir -p "$d_drafts"
 
     # sanity cheques
     [ $# -eq 0 ] && { show_usage; exit 2; }
     if [ -z "$EDITOR" ]; then
-        EDITOR="vi"
-        yellowprint "\$EDITOR not set - assuming vi"
-        yellowprint "Add next line to '.config' to define your editor (ex. nano)"
-        cyanprint "    EDITOR='nano'\n"
-        printf "Hit [Enter] to continue"
-        read -r key
+      EDITOR="vi"
+      yellowprint "\$EDITOR not set - assuming vi"
+      yellowprint "Add next line to '.config' to define your editor (ex. nano)"
+      cyanprint "    EDITOR='nano'\n"
+      printf "Hit [Enter] to continue"
+      read -r key
     fi
 
     cmd="$1"
     shift
 
     case "$cmd" in
-        post )     cmd_post "$@";;
-        list )     cmd_list "$@";;
-        search )   cmd_search "$@";;
-        tags)      cmd_tags "$@";;
-        edit )     cmd_edit "$@";;
-        rename )   cmd_rename "$@";;
-        delete )   cmd_delete "$@";;
-        makesite ) ./makesite.py;;
-        publish )  cmd_publish "$@";;
-        help )     show_usage; exit 2;;
-           * )     die "Illegal command: '$cmd'";;
+      post )     cmd_post "$@";;
+      list )     cmd_list "$@";;
+      search )   cmd_search "$@";;
+      tags)      cmd_tags "$@";;
+      edit )     cmd_edit "$@";;
+      rename )   cmd_rename "$@";;
+      delete )   cmd_delete "$@";;
+      makesite ) ./makesite.py;;
+      publish )  cmd_publish "$@";;
+      help )     show_usage; exit 2;;
+      * )     die "Illegal command: '$cmd'";;
     esac
 }
 
