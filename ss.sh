@@ -79,10 +79,17 @@ die () { redprint "ERROR: $1"; exit 1; }
 
 # ----------------------------------------------------------------------------
 get_all_posts () {
-  find "$d_blog" "$d_drafts" \
-    -type f \( -name "*\.md" -o -name "*\.html" \) | sed "s/^\.\///" \
-    | nl -s': ' -w4
-  }
+  if command -v fd > /dev/null 2>&1; then
+    fd -t f -s -c never -e md -e html . "$d_blog" "$d_drafts" \
+      | sed "s/^\.\///" | nl -s': ' -w4
+  elif command -v fdfind > /dev/null 2>&1; then
+    fdfind -t f -s -c never -e md -e html . "$d_blog" "$d_drafts" \
+      | sed "s/^\.\///" | nl -s': ' -w4
+  else
+    find "$d_blog" "$d_drafts" -type f \( -name "*\.md" -o -name "*\.html" \) \
+      | sed "s/^\.\///" | nl -s': ' -w4
+  fi
+}
 
 # ----------------------------------------------------------------------------
 get_post_by_id () {
@@ -91,7 +98,8 @@ get_post_by_id () {
 
 # ----------------------------------------------------------------------------
 extract_title_from_post () {
-  grep -m1 '<!-- title: ' "$1" | sed -e "s/<!-- title: \(.*\) -->/\\1/"
+  post="$(get_post_by_id "$1")"
+  grep -m1 '<!-- title: ' "$post" | sed -e "s/<!-- title: \(.*\) -->/\\1/"
 }
 
 # ----------------------------------------------------------------------------
@@ -102,14 +110,11 @@ sanitize_string () {
 
 # ----------------------------------------------------------------------------
 # TODO split edit and post
-cmd_post () {
-  if [ $# -eq 0 ]; then
-    fmt="md"
-  elif [ "$1" = '-h' ]; then
-    fmt="html"
-  else
-    die "Invalid parameter: $1"
-  fi
+cmd_newpost () {
+  fmt="md"
+  # shellcheck is stupid - it complains about to following
+  # line, but if we change die to echo it doesn't complain
+  [ $# -eq 1 ] && [ "$1" = '-h' ] && fmt="html" || die "Invalid parameter: $1"
 
   subdir="$d_blog/$(date +%Y-%m)"
   slug=$(date +%Y-%m-%d)
@@ -122,7 +127,7 @@ cmd_post () {
   filename=$(sanitize_string "$tmpfile")
   post="${slug}-${filename}.${fmt}"
 
-  printf "(P)ost or (D)raft or (A)bort: "
+  printf "(P)ost or (D)raft or (A)bandon: "
   read -r key
 
   if [ "$key" = 'p' ]; then
@@ -273,17 +278,31 @@ pgm="$(basename "$0")"
 cat <<- EOF
 	Usage:
 
-	    "$pgm" post [-h]  --> file type is Markdown, unless '-h' for HTML
-	    "$pgm" list [string_in_filename]
-	    "$pgm" search [pattern]
-	    "$pgm" tags [pattern]
-	    "$pgm" edit n
-	    "$pgm" rename n
-	    "$pgm" delete n [n1] [n2] [...]
+	    "$pgm" new [-h]  --> type is Markdown, unless '-h' for HTML
+	    "$pgm" list <string_in_filename>
+	    "$pgm" search <pattern_inside_files>
+	    "$pgm" tags <pattern>
+	    "$pgm" edit <n>
+	    "$pgm" rename <n> [title]  [Default: extract title from file]
+	    "$pgm" delete <n> [n1] [n2] [...]
 	    "$pgm" makesite
 	    "$pgm" publish
 	    "$pgm" help
 EOF
+}
+
+# ----------------------------------------------------------------------------
+run_tests () {
+  [ $# -eq 1 ] && id="$1" || id="1"
+  echo -e "\n---- get_all_posts"
+  get_all_posts
+  echo -e "\n---- get_post_by_id $id"
+  get_post_by_id "$id"
+  echo -e "\n---- extract_title_from_post $id"
+  s="$(extract_title_from_post $id)"
+  echo "$s"
+  echo -e "\n---- sanitize_string '$s'"
+  sanitize_string "$s"
 }
 
 # ----------------------------------------------------------------------------
@@ -308,7 +327,7 @@ main () {
     shift
 
     case "$cmd" in
-      post )     cmd_post "$@";;
+      new )      cmd_newpost "$@";;
       list )     cmd_list "$@";;
       search )   cmd_search "$@";;
       tags)      cmd_tags "$@";;
@@ -317,6 +336,7 @@ main () {
       delete )   cmd_delete "$@";;
       makesite ) ./makesite.py;;
       publish )  cmd_publish "$@";;
+      test )     run_tests "$@";;
       help )     show_usage; exit 2;;
       * )     die "Illegal command: '$cmd'";;
     esac
