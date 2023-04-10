@@ -19,7 +19,7 @@
 #   Pre-requisites:
 #
 #   - POSIX shell (sh, ash, dash, etc.) or better (bash, zsh, etc.)
-#   - Python 3.6 or better tu run makesite.py
+#   - Python 3.8 or better to run makesite.py
 
 #   Installation notes:
 #
@@ -64,7 +64,7 @@ LOCAL_WWW=""
 d_blog="content/blog"           # TODO make blog an optional command line parameter
 d_drafts="drafts"               # must be outside 'content' dir
 d_site="_site"                  # where makesite.py puts its generated site
-post_template=".post"
+post_template=".post"           # there should be a .md and a .html version
 
 set -o nounset
 
@@ -78,17 +78,10 @@ ghostprint ()  { printf "\033[1;30m%s\033[0m\n" "$*" >&2; }
 die () { redprint "ERROR: $1"; exit 1; }
 
 # ----------------------------------------------------------------------------
+#   fdfind -t f -c never -e md -e html . "$d_blog" "$d_drafts" if installed
 get_all_posts () {
-  if command -v fd > /dev/null 2>&1; then
-    fd -t f -s -c never -e md -e html . "$d_blog" "$d_drafts" \
-      | sed "s/^\.\///" | nl -s': ' -w4
-  elif command -v fdfind > /dev/null 2>&1; then
-    fdfind -t f -s -c never -e md -e html . "$d_blog" "$d_drafts" \
-      | sed "s/^\.\///" | nl -s': ' -w4
-  else
-    find "$d_blog" "$d_drafts" -type f \( -name "*\.md" -o -name "*\.html" \) \
-      | sed "s/^\.\///" | nl -s': ' -w4
-  fi
+  find "$d_blog" "$d_drafts" -type f \( -iname "*\.md" -o -iname "*\.html" \) \
+    | sed "s/^\.\///" | nl -s': ' -w4
 }
 
 # ----------------------------------------------------------------------------
@@ -97,50 +90,109 @@ get_post_by_id () {
 }
 
 # ----------------------------------------------------------------------------
+# if $1 is all digits, then it's an ID, otherwise it's a file path
+is_id () {
+  test -z "$(echo "$1" | tr -d '0-9' || true)"
+  return
+}
+
+# ----------------------------------------------------------------------------
 extract_title_from_post () {
-  post="$(get_post_by_id "$1")"
-  grep -m1 '<!-- title: ' "$post" | sed -e "s/<!-- title: \(.*\) -->/\\1/"
-}
-
-# ----------------------------------------------------------------------------
-sanitize_string () {
-  echo "$1" | sed -e 's/[^A-Za-z0-9._-]/-/g' -e 's/-\+/-/g' \
+  token='<!-- title: '
+  post="$1"
+  is_id "$1" && post="$(get_post_by_id "$1")"
+  t="$(grep -m1 "$token" "$post" 2> /dev/null | sed "s/$token\(.*\) -->/\\1/")"
+  # sanitize string
+  echo "$t" \
+    | sed -e 's/[^A-Za-z0-9._-]/-/g' -e 's/-\+/-/g' -e 's/-$//' -e 's/^-//' \
     | tr '[:upper:]' '[:lower:]'
+}    
+
+# ----------------------------------------------------------------------------
+#   $1 : $post - two possible formats
+#                1. content/blog/2023-01/2023-01-01-dummy.md
+#                2. drafts/2023-01-01-dummy.md
+disposition () {
+  # TODO check for filename collisions
+  # TODO check for valid filename chars in tags
+  ### subdir="$d_blog/$(date +%Y-%m)"
+  post="$1"
+  f="${post##*/}"        # filename: 2023-01-01-dummy.md'
+  ### d="${post%/*}"         # directory: content/blog/2023-01 _or_ drafts
+
+  do_loop=1
+  while [ "$do_loop" -eq 1 ]; do
+    do_loop=0
+    printf "(P)ost or (S)ave draft or (D)elete draft: "
+    read -r key
+  
+    case "$key" in
+      p|P )
+        d_subdir="$d_blog/$(echo "$f" | head -c7 -)"  # content/blog/2023-01
+        [ -d "$d_subdir" ] || mkdir -p "$d_subdir"
+        [ -f "$d_subdir/$f" ] || { mv -u "$post" "$d_subdir" || exit 1; }
+        echo "$d_subdir/$f"
+        ;;
+      s|S )
+        [ -f "$d_drafts/$f" ] || { mv -u "$post" "$d_drafts" || exit 1; }
+        echo "$d_drafts/$f"
+        ;;
+      d|D )
+        rm -i "$post" || exit 1
+        ;;
+      * )
+        redprint "Illegal key: '$key' --> try again"
+        do_loop=1
+        ;;
+    esac
+  done
 }
 
 # ----------------------------------------------------------------------------
-# TODO split edit and post
-cmd_newpost () {
-  fmt="md"
-  # shellcheck is stupid - it complains about to following
-  # line, but if we change die to echo it doesn't complain
-  [ $# -eq 1 ] && [ "$1" = '-h' ] && fmt="html" || die "Invalid parameter: $1"
+rebuild_indexes () {
+  redprint "rebuild_indexes(): Not implemented yet!"
+}
 
-  subdir="$d_blog/$(date +%Y-%m)"
-  slug=$(date +%Y-%m-%d)
+# ----------------------------------------------------------------------------
+cmd_newpost () {
+  [ $# -lt 2 ] || die "'new' expected 0 or 1 parameter, but got $#"
+  # shell-check complains about the && followed by ||, but if we
+  # change 'die' to 'echo' it doesn't complain so I'm leaving it
+  fmt="md"
+  if [ $# -eq 1 ]; then
+    [ "$1" = '-h' ] && fmt="html" || die "Invalid parameter: $1"
+  fi
 
   tmpfile="$(mktemp -u -t "post.XXXXXX").$fmt"
-  [ -d "$subdir" ] || mkdir -p "$subdir"
-
   cp "$post_template.$fmt" "$tmpfile" || exit 1
+
   "$EDITOR" "$tmpfile" || exit 1
-  filename=$(sanitize_string "$tmpfile")
-  post="${slug}-${filename}.${fmt}"
 
-  printf "(P)ost or (D)raft or (A)bandon: "
-  read -r key
+  title="$(extract_title_from_post "$tmpfile")"
+  slug="$(date +%Y-%m-%d)"
+  slugfile="${slug}-${title}.${fmt}"
+  mv "$tmpfile" "$d_drafts/$slugfile"   # TODO check for collisions
 
-  if [ "$key" = 'p' ]; then
-    mv "$tmpfile" "$subdir/$post" || exit 1
-    echo "$subdir/$post"
-  elif [ "$key" = 'd' ]; then
-    mv "$tmpfile" "$d_drafts/$post" || exit 1
-    echo "$d_drafts/$post"
-  elif [ "$key" = 'a' ]; then
-    rm -i "$tmpfile" || exit 1
-  else
-    echo "Invalid response - post saved as '$tmpfile'"
-  fi
+  disposition "$d_drafts/$slugfile"
+}
+
+# ----------------------------------------------------------------------------
+cmd_edit () {
+  [ $# -eq 1 ] || die "'edit' expected 1 parameter, but got $#"
+
+  post="$(get_post_by_id "$1")"
+  [ -n "$post" ] || die "Post $1 does not exist"
+
+  "$EDITOR" "$post" || exit 1
+
+  f="${post##*/}"        # filename: 2023-01-01-dummy.md'
+  slug="$(echo "$f" | head -c10 -)"  # 2023-01-01
+  fmt="${post##*.}"
+  title="$(extract_title_from_post "$post")"
+  newpost="${d_drafts}/${slug}-${title}.${fmt}"
+  [ -f "$newpost" ] || { mv -u "$post" "$newpost" || exit 1; }
+
+  disposition "$newpost"
 }
 
 # ----------------------------------------------------------------------------
@@ -148,7 +200,7 @@ cmd_list () {
   [ $# -lt 2 ] || die "'list' expected 0 or 1 parameter, but got $#"
 
   if [ $# -eq 1 ]; then
-    get_all_posts | grep "$1"
+    get_all_posts | grep -i "$1"
   else
     get_all_posts
   fi  
@@ -158,11 +210,14 @@ cmd_list () {
 cmd_search () {
   [ $# -eq 1 ] || die "'search' expected 1 parameter, but got $#"
 
-  get_all_posts | while read -r post; do
-    post_id="${post%%:*}"
-    post_file="${post#*: }"
-    match="$(grep "$1" "$post_file" | sed "s/^/       /")"
-    [ -n "$match" ] && printf "%4d: %s:\n%s\n" "$post_id" "$post_file" "$match"
+  get_all_posts | while read -r line; do
+    id="${line%%:*}"
+    post="${line#*: }"
+    match="$(grep "$1" "$post" | sed "s/^/   /")"
+    if [ -n "$match" ]; then
+      greenprint "    ${id}: ${post}"
+      printf "%s\n" "$match"
+    fi
   done
 }
 
@@ -170,68 +225,39 @@ cmd_search () {
 cmd_tags () {
   [ $# -eq 1 ] || die "'tag' expected 1 parameter, but got $#"
 
-  get_all_posts | while read -r post; do
-    post_id="${post%%:*}"
-    post_file="${post#*: }"
-    match="$(grep "<!-- tags:.* $1 .*-->" "$post_file" | sed "s/^/       /")"
-    [ -n "$match" ] && printf "%4d: %s:\n" "$post_id" "$post_file"
-  done
-}
-
-# ----------------------------------------------------------------------------
-cmd_edit () {
-  [ $# -ne 1 ] && die "'edit' expected 1 parameter, but got $#"
-
-  post="$(get_post_by_id "$1")"
-  [ -z "$post" ] && die "Post $1 does not exist"
-
-  "$EDITOR" "$post" || exit 1
-
-  d_post=$(readlink -f $(dirname "$post"))
-  d_drafts=$(readlink -f "$d_drafts")
-  printf "(P)ost or (D)raft: "
-  read -r key
-
-  valid=0
-  while [ "$valid" -eq 0 ]; do
-    if [ "$key" = 'p' ]; then
-      echo "file://$(readlink -f "$subdir/$post")"
-      valid=1
-    elif [ "$key" = 'd' ]; then
-      [ "$d_post" != "$d_drafts" ] && { mv "$post" "$d_drafts" || exit 1; }
-      echo "file://$(readlink -f "$post")"
-      valid=1
-    else
-      echo "Invalid response - try again"
-    fi
+  get_all_posts | while read -r line; do
+    id="${line%%:*}"
+    post="${line#*: }"
+    match="$(grep "<!-- tags:.* $1 .*-->" "$post" | sed "s/^/       /")"
+    [ -n "$match" ] && printf "%4d: %s:\n" "$id" "$post"
   done
 }
 
 # ----------------------------------------------------------------------------
 cmd_rename () {
-  [ $# -ne 2 ] && die "'rename' expected 2 parameters, but got $#"
+  [ $# -eq 0 ] || die "'rename' expected 0 parameters, but got $#"
 
-  post="$(get_post_by_id "$1")"  # content/blog/2023-03/2023-03-12-a-post.md
-  [ -z "$post" ] && die "Post $1 does not exist"
+  get_all_posts | while read -r line; do
+    post="${line#*: }"            # content/blog/2023-03/2023-03-12-a-post.md
+    [ -z "$post" ] && die "Post $1 does not exist"
 
-  # you can do this all in sed but it's ugly and hard to tweak leter on
-  postfile="${post##*/}"                    # 2023-03-12-a-post.md
-  postdir="${post%/*}"                      # content/blog/2023-03
-  ext="${post##*.}"                         # md
-  slug="$(echo "$postfile" | cut -b1-10)"   # 2023-03-12
-  newtitle="$(sanitize_string "$2")"
+    # you can do this all in sed but it's ugly and hard to tweak leter on
+    postfile="${post##*/}"                    # 2023-03-12-a-post.md
+    postdir="${post%/*}"                      # content/blog/2023-03
+    ext="${post##*.}"                         # md
+    slug="$(echo "$postfile" | cut -b1-10)"   # 2023-03-12
+    newtitle="$(extract_title_from_post "$post")"
 
-  mv -i "$post" "${postdir}/${slug}-${newtitle}.${ext}" || exit 1
+    mv -u "$post" "${postdir}/${slug}-${newtitle}.${ext}" || exit 1
+  done
 }
 
 # ----------------------------------------------------------------------------
 cmd_delete () {
-  [ $# -eq 0 ] && die "'delete' expected 1 or more parameters, but got $#"
+  [ $# -gt 0 ] || die "'delete' expected 1 or more parameters, but got $#"
 
-  for i; do
-    file=$(get_all_posts | grep -n "." | grep "^$i:" | sed "s/^$i://")
-    [ -n "$file" ] && { rm -i "$file" || exit 1; }
-  done
+  posts="$(for id; do get_post_by_id "$id"; done)"
+  echo "$posts" | xargs -n1 -o rm -i
 }
 
 # ----------------------------------------------------------------------------
@@ -279,14 +305,15 @@ cat <<- EOF
 	Usage:
 
 	    "$pgm" new [-h]  --> type is Markdown, unless '-h' for HTML
-	    "$pgm" list <string_in_filename>
-	    "$pgm" search <pattern_inside_files>
-	    "$pgm" tags <pattern>
 	    "$pgm" edit <n>
-	    "$pgm" rename <n> [title]  [Default: extract title from file]
 	    "$pgm" delete <n> [n1] [n2] [...]
+	    "$pgm" rename      [rename all posts with title from inside each]
+	    "$pgm" list <string_in_filename>          [case insensitive]
+	    "$pgm" search <pattern_inside_files>      [case sensitive]
+	    "$pgm" tags <pattern>                     [case sensitive]
 	    "$pgm" makesite
 	    "$pgm" publish
+	    "$pgm" test <n>
 	    "$pgm" help
 EOF
 }
@@ -294,52 +321,64 @@ EOF
 # ----------------------------------------------------------------------------
 run_tests () {
   [ $# -eq 1 ] && id="$1" || id="1"
-  echo -e "\n---- get_all_posts"
+  echo; redprint "INTERNAL FUNCTIONS"
+  echo ; echo "---- get_all_posts ----"
   get_all_posts
-  echo -e "\n---- get_post_by_id $id"
-  get_post_by_id "$id"
-  echo -e "\n---- extract_title_from_post $id"
-  s="$(extract_title_from_post $id)"
-  echo "$s"
-  echo -e "\n---- sanitize_string '$s'"
-  sanitize_string "$s"
+  echo ; echo "---- get_post_by_id $id ----"
+  p="$(get_post_by_id "$id")"
+  echo ">>>$p<<<"
+  echo ; echo "---- extract_title_from_post $id ----"
+  t="$(extract_title_from_post "$id")"
+  echo ">>>$t<<<"
+  echo ; echo "---- extract_title_from_post '$p' ----"
+  t="$(extract_title_from_post "$p")"
+  echo ">>>$t<<<"
+  echo ; echo "---- sanitize_string '$t' ----"
+  s="$(sanitize_string "$t")"
+  echo ">>>$s<<<"
+
+  echo; redprint "TOP LEVEL FUNCTIONS"
+  echo ; echo "---- list  NetBSD ----"
+  cmd_list "NetBSD"
+  echo ; echo "---- search  NetBSD ----"
+  cmd_search "NetBSD"
+  echo ; echo "---- tags  NetBSD ----"
+  cmd_tags "NetBSD"
 }
 
 # ----------------------------------------------------------------------------
 main () {
-  d_root="$(dirname "$0")"
-  cd "$d_root" || exit 1
+  # sanity cheques
+  [ $# -eq 0 ] && { show_usage; exit 2; }
+  cmd="$1"
+  shift
+
+  if [ -z "$EDITOR" ]; then
+    EDITOR="vi"
+    yellowprint "\$EDITOR not set - assuming vi"
+    yellowprint "Add next line to '.config' to define your editor (ex. nano)"
+    cyanprint "    EDITOR='nano'\n"
+    printf "Hit [Enter] to continue"
+    read -r key
+  fi
+
   [ -f ".config" ] && . "./.config"
   [ -d "$d_drafts" ] || mkdir -p "$d_drafts"
 
-    # sanity cheques
-    [ $# -eq 0 ] && { show_usage; exit 2; }
-    if [ -z "$EDITOR" ]; then
-      EDITOR="vi"
-      yellowprint "\$EDITOR not set - assuming vi"
-      yellowprint "Add next line to '.config' to define your editor (ex. nano)"
-      cyanprint "    EDITOR='nano'\n"
-      printf "Hit [Enter] to continue"
-      read -r key
-    fi
-
-    cmd="$1"
-    shift
-
-    case "$cmd" in
-      new )      cmd_newpost "$@";;
-      list )     cmd_list "$@";;
-      search )   cmd_search "$@";;
-      tags)      cmd_tags "$@";;
-      edit )     cmd_edit "$@";;
-      rename )   cmd_rename "$@";;
-      delete )   cmd_delete "$@";;
-      makesite ) ./makesite.py;;
-      publish )  cmd_publish "$@";;
-      test )     run_tests "$@";;
-      help )     show_usage; exit 2;;
-      * )     die "Illegal command: '$cmd'";;
-    esac
+  case "$cmd" in
+    new )      cmd_newpost "$@";;
+    edit )     cmd_edit "$@";;
+    delete )   cmd_delete "$@";;
+    rename )   cmd_rename "$@";;
+    list )     cmd_list "$@";;
+    search )   cmd_search "$@";;
+    tags)      cmd_tags "$@";;
+    makesite ) rebuild_indexes; ./makesite.py;;
+    publish )  cmd_publish "$@";;
+    test )     run_tests "$@";;
+    help )     show_usage; exit 2;;
+    * )     die "Illegal command: '$cmd'";;
+  esac
 }
 
 # ----------------------------------------------------------------------------
