@@ -68,12 +68,14 @@ post_template=".post"           # there should be a .md and a .html version
 
 set -o nounset
 
-redprint ()    { printf "\033[1;31m%s\033[0m\n" "$*" >&2; }
-greenprint ()  { printf "\033[1;32m%s\033[0m\n" "$*" >&2; }
-yellowprint () { printf "\033[1;33m%s\033[0m\n" "$*" >&2; }
-blueprint ()   { printf "\033[1;34m%s\033[0m\n" "$*" >&2; }
-cyanprint ()   { printf "\033[1;36m%s\033[0m\n" "$*" >&2; }
-ghostprint ()  { printf "\033[1;30m%s\033[0m\n" "$*" >&2; }
+redprint ()    { printf "\033[1;31m%s\033[0m\n" "$1" >&2; }
+greenprint ()  { printf "\033[0;32m%s\033[0m\n" "$1" >&2; }
+yellowprint () { printf "\033[0;33m%s\033[0m\n" "$1" >&2; }
+blueprint ()   { printf "\033[0;34m%s\033[0m\n" "$1" >&2; }
+cyanprint ()   { printf "\033[0;36m%s\033[0m\n" "$1" >&2; }
+ghostprint ()  { printf "\033[0;30m%s\033[0m\n" "$1" >&2; }
+promptlite ()  { printf "\033[0;32m%s\033[0m"   "$1" >&2; }  # no \n at EOL
+prompt ()      { printf "\033[1;32m%s\033[0m"   "$1" >&2; }  # no \n at EOL
 
 die () { redprint "ERROR: $1"; exit 1; }
 
@@ -93,7 +95,6 @@ get_post_by_id () {
 # if $1 is all digits, then it's an ID, otherwise it's a file path
 is_id () {
   test -z "$(echo "$1" | tr -d '0-9' || true)"
-  return
 }
 
 # ----------------------------------------------------------------------------
@@ -106,26 +107,44 @@ extract_title_from_post () {
   echo "$t" \
     | sed -e 's/[^A-Za-z0-9._-]/-/g' -e 's/-\+/-/g' -e 's/-$//' -e 's/^-//' \
     | tr '[:upper:]' '[:lower:]'
-}    
+}
 
 # ----------------------------------------------------------------------------
+# delete all valid characters from a string, leaving only the characters that
+# we don't qant to use in filenames
+is_invalid () {
+  bad_chars="$(echo "$1" | tr -d 'A-Za-z0-9-_. ')"
+  test -n "$bad_chars"
+}
+
+# ----------------------------------------------------------------------------
+# function also checks for tags with illegal characters because makesite.py
+# creates an index file for each tag --> don't want invalid chars in filenames
 #   $1 : $post - two possible formats
 #                1. content/blog/2023-01/2023-01-01-dummy.md
 #                2. drafts/2023-01-01-dummy.md
 disposition () {
   # TODO check for filename collisions
-  # TODO check for valid filename chars in tags
-  ### subdir="$d_blog/$(date +%Y-%m)"
+  # TODO move tag check edit to separate func to use in rebuild_indexex() also
   post="$1"
   f="${post##*/}"        # filename: 2023-01-01-dummy.md'
-  ### d="${post%/*}"         # directory: content/blog/2023-01 _or_ drafts
+
+  tags="$(sed -n "s/<!-- tags: \+\(.*\) -->/\\1/p" "$post")"
+  if is_invalid "$tags" ; then
+    redprint "Invalid character(s) found in one or more tags below"
+    echo "    $tags"
+    promptlite "Hit any key to re-edit file: "
+    read -r key
+    cmd_edit "$post"
+    return          # need this or else we get unwanted recursion
+  fi
 
   do_loop=1
   while [ "$do_loop" -eq 1 ]; do
     do_loop=0
-    printf "(P)ost or (S)ave draft or (D)elete draft: "
+    prompt "(P)ost or (S)ave draft or (D)elete draft: "
     read -r key
-  
+
     case "$key" in
       p|P )
         d_subdir="$d_blog/$(echo "$f" | head -c7 -)"  # content/blog/2023-01
@@ -180,7 +199,8 @@ cmd_newpost () {
 cmd_edit () {
   [ $# -eq 1 ] || die "'edit' expected 1 parameter, but got $#"
 
-  post="$(get_post_by_id "$1")"
+  post="$1"
+  is_id "$1" && post="$(get_post_by_id "$1")"
   [ -n "$post" ] || die "Post $1 does not exist"
 
   "$EDITOR" "$post" || exit 1
@@ -203,7 +223,7 @@ cmd_list () {
     get_all_posts | grep -i "$1"
   else
     get_all_posts
-  fi  
+  fi
 }
 
 # ----------------------------------------------------------------------------
@@ -358,7 +378,7 @@ main () {
     yellowprint "\$EDITOR not set - assuming vi"
     yellowprint "Add next line to '.config' to define your editor (ex. nano)"
     cyanprint "    EDITOR='nano'\n"
-    printf "Hit [Enter] to continue"
+    prompt "Hit [Enter] to continue "
     read -r key
   fi
 
