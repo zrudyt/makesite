@@ -81,9 +81,12 @@ die () { redprint "ERROR: $1"; exit 1; }
 
 # ----------------------------------------------------------------------------
 #   fdfind -t f -c never -e md -e html . "$d_blog" "$d_drafts" if installed
+# ----------------------------------------------------------------------------
 get_all_posts () {
   find "$d_blog" "$d_drafts" -type f \( -iname "*\.md" -o -iname "*\.html" \) \
-    | sed "s/^\.\///" | nl -s': ' -w4
+    | sort \
+    | sed "s/^\.\///" \
+    | nl -s': ' -w4
 }
 
 # ----------------------------------------------------------------------------
@@ -92,7 +95,8 @@ get_post_by_id () {
 }
 
 # ----------------------------------------------------------------------------
-# if $1 is all digits, then it's an ID, otherwise it's a file path
+#   if $1 is all digits, then it's an ID, otherwise it's a file path
+# ----------------------------------------------------------------------------
 is_id () {
   test -z "$(echo "$1" | tr -d '0-9' || true)"
 }
@@ -110,47 +114,56 @@ extract_title_from_post () {
 }
 
 # ----------------------------------------------------------------------------
-# delete all valid characters from a string, leaving only the characters that
-# we don't qant to use in filenames
+#   delete all valid characters from string, leaving only characters
+#   that we don't want to use in filenames
+# ----------------------------------------------------------------------------
 is_invalid () {
-  bad_chars="$(echo "$1" | tr -d 'A-Za-z0-9-_. ')"
+  bad_chars=$(echo "$1" | tr -d 'A-Za-z0-9._\-\ ')
   test -n "$bad_chars"
 }
 
 # ----------------------------------------------------------------------------
-# function also checks for tags with illegal characters because makesite.py
-# creates an index file for each tag --> don't want invalid chars in filenames
-#   $1 : $post - two possible formats
-#                1. content/blog/2023-01/2023-01-01-dummy.md
-#                2. drafts/2023-01-01-dummy.md
-disposition () {
-  # TODO check for filename collisions
-  # TODO move tag check edit to separate func to use in rebuild_indexex() also
-  post="$1"
-  f="${post##*/}"        # filename: 2023-01-01-dummy.md'
-
-  tags="$(sed -n "s/<!-- tags: \+\(.*\) -->/\\1/p" "$post")"
+#   $1 : $post
+# ----------------------------------------------------------------------------
+has_invalid_tags () {
+  tags="$(sed -n "s/<!-- tags: \+\(.*\) -->/\\1/p" "$1")"
   if is_invalid "$tags" ; then
     redprint "Invalid character(s) found in one or more tags below"
     echo "    $tags"
     promptlite "Hit any key to re-edit file: "
     read -r key
-    cmd_edit "$post"
-    return          # need this or else we get unwanted recursion
+    return 0
+  else
+    return 1
   fi
+}
 
-  do_loop=1
-  while [ "$do_loop" -eq 1 ]; do
-    do_loop=0
-    prompt "(P)ost or (S)ave draft or (D)elete draft: "
+# ----------------------------------------------------------------------------
+#   function also checks for tags with illegal characters because makesite.py
+#   creates index file for each tag --> don't want invalid chars in filenames
+#     $1 : $post - two possible formats
+#                1. content/blog/2023-01/2023-01-01-dummy.md
+#                2. drafts/2023-01-01-dummy.md
+# ----------------------------------------------------------------------------
+post_or_draft () {
+  # TODO check for filename collisions
+  post="$1"
+
+  f="${post##*/}"        # filename: 2023-01-01-dummy.md'
+  do_loop="true"
+  while [ "$do_loop" = "true" ]; do
+    do_loop="false"
+    prompt "(P)ost, (S)ave draft, (L)eave in existing dir, or (D)elete draft: "
     read -r key
-
     case "$key" in
       p|P )
         d_subdir="$d_blog/$(echo "$f" | head -c7 -)"  # content/blog/2023-01
         [ -d "$d_subdir" ] || mkdir -p "$d_subdir"
         [ -f "$d_subdir/$f" ] || { mv -u "$post" "$d_subdir" || exit 1; }
         echo "$d_subdir/$f"
+        ;;
+      l|L )
+        echo "$post"
         ;;
       s|S )
         [ -f "$d_drafts/$f" ] || { mv -u "$post" "$d_drafts" || exit 1; }
@@ -161,7 +174,7 @@ disposition () {
         ;;
       * )
         redprint "Illegal key: '$key' --> try again"
-        do_loop=1
+        do_loop="true"
         ;;
     esac
   done
@@ -170,6 +183,10 @@ disposition () {
 # ----------------------------------------------------------------------------
 rebuild_indexes () {
   redprint "rebuild_indexes(): Not implemented yet!"
+  get_all_posts | while read -r line; do
+    post="${line#*: }"
+    has_invalid_tags "$post" && cmd_edit "$post"
+  done
 }
 
 # ----------------------------------------------------------------------------
@@ -185,14 +202,18 @@ cmd_newpost () {
   tmpfile="$(mktemp -u -t "post.XXXXXX").$fmt"
   cp "$post_template.$fmt" "$tmpfile" || exit 1
 
-  "$EDITOR" "$tmpfile" || exit 1
+  valid="false"
+  while [ "$valid" = "false" ]; do
+    "$EDITOR" "$tmpfile" || exit 1
+    has_invalid_tags "$tmpfile" || valid="true"
+  done
 
   title="$(extract_title_from_post "$tmpfile")"
   slug="$(date +%Y-%m-%d)"
   slugfile="${slug}-${title}.${fmt}"
   mv "$tmpfile" "$d_drafts/$slugfile"   # TODO check for collisions
 
-  disposition "$d_drafts/$slugfile"
+  post_or_draft "$d_drafts/$slugfile"
 }
 
 # ----------------------------------------------------------------------------
@@ -203,16 +224,21 @@ cmd_edit () {
   is_id "$1" && post="$(get_post_by_id "$1")"
   [ -n "$post" ] || die "Post $1 does not exist"
 
-  "$EDITOR" "$post" || exit 1
+  valid="false"
+  while [ "$valid" = "false" ]; do
+    "$EDITOR" "$post" || exit 1
+    has_invalid_tags "$post" || valid="true"
+  done
 
-  f="${post##*/}"        # filename: 2023-01-01-dummy.md'
-  slug="$(echo "$f" | head -c10 -)"  # 2023-01-01
+  d_orig="${post%/*}"            # directory: 'drafts' or 'content/blog/subdir'
+  filename="${post##*/}"         # filename: 2023-01-01-dummy.md'
+  slug="$(echo "$filename" | head -c10 -)"  # 2023-01-01
   fmt="${post##*.}"
   title="$(extract_title_from_post "$post")"
-  newpost="${d_drafts}/${slug}-${title}.${fmt}"
+  newpost="${d_orig}/${slug}-${title}.${fmt}"
   [ -f "$newpost" ] || { mv -u "$post" "$newpost" || exit 1; }
 
-  disposition "$newpost"
+  post_or_draft "$newpost"
 }
 
 # ----------------------------------------------------------------------------
@@ -277,7 +303,7 @@ cmd_delete () {
   [ $# -gt 0 ] || die "'delete' expected 1 or more parameters, but got $#"
 
   posts="$(for id; do get_post_by_id "$id"; done)"
-  echo "$posts" | xargs -n1 -o rm -i
+  [ -n "$posts" ] && { echo "$posts" | xargs -n1 -o rm -i; }
 }
 
 # ----------------------------------------------------------------------------
@@ -395,6 +421,7 @@ main () {
     tags)      cmd_tags "$@";;
     makesite ) rebuild_indexes; ./makesite.py;;
     publish )  cmd_publish "$@";;
+    rebuild )  rebuild_indexes;;
     test )     run_tests "$@";;
     help )     show_usage; exit 2;;
     * )     die "Illegal command: '$cmd'";;
