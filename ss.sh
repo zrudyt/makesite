@@ -336,11 +336,11 @@ cmd_publish () {
     [ -z "$REMOTE_PATH" ] && die "Set 'REMOTE_PATH=' in '.config'"
     rsync --delete -rtzvcl "$d_site/" \
       "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}/${d_site}"
-        elif [ "$1" = "local" ]; then
-          [ -z "$LOCAL_WWW" ] && die "Set 'LOCAL_WWW=' in '.config'"
-          rsync --delete -rtzvcl "$d_site/" "${LOCAL_WWW}/{$d_site}"  # -ravc
-        else
-          die "Invalid parameter: $1"
+  elif [ "$1" = "local" ]; then
+    [ -z "$LOCAL_WWW" ] && die "Set 'LOCAL_WWW=' in '.config'"
+    rsync --delete -rtzvcl "$d_site/" "${LOCAL_WWW}/${d_site}"  # -ravc
+  else
+    die "Invalid parameter: $1"
   fi
 }
 
@@ -358,7 +358,7 @@ cat <<- EOF
 	    "$pgm" search <pattern_inside_files>      [case sensitive]
 	    "$pgm" tags <pattern>                     [case sensitive]
 	    "$pgm" makesite
-	    "$pgm" publish
+	    "$pgm" publish [local]         [default: publish to remote host]
 	    "$pgm" test <n>
 	    "$pgm" help
 EOF
