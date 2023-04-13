@@ -1,6 +1,6 @@
 /* General */
 html {
-	background: black ;
+	background: black;
 	padding-bottom: 50px; /* amount of white space after footer to max scroll */
 }
 
@@ -14,11 +14,12 @@ body {
 */
 
 body {
+	font-family: helvetica, arial, sans-serif;
 	max-width: 950px;
 	margin-left: auto;
 	margin-right: auto;
 	margin-top: 30px;
-	background: #011 ;
+	background: #011;
 	color: #CCC;
 	border-style: solid;
 	border-width: 5px;
@@ -26,7 +27,7 @@ body {
 }
 
 main {
-	padding: 1em ;
+	padding: 1em;
 }
 
 img {
@@ -43,54 +44,57 @@ h1, h2, h3, h4, h5, h6 {
 */
 
 h1,h2,h3,h4 {
-	text-align: center;
+	text-align: left;
 }
 
 h1 {
-	font-size: 48px;
-	text-shadow: 3px 0 black, 3px 3px black, 0 3px black ;
-	color: #00CCFF ;
+	font-size: 1.5em;
+	text-align: center;
+	/* text-shadow: 3px 0 black, 3px 3px black, 0 3px black; */
+	color: #00CCFF;
+	margin-bottom: 0.25em;
 }
 
 h2 {
-	color: #00BBDD ;
+	font-size: 1.25em;
+	color: #00BBDD;
 }
 
 h3 {
-	color: #00AABB ;
+	font-size: 1.1em;
+	color: #00AABB;
 }
 
 a {
 	color: #ADD8E6; /* lightblue */
 }
 
+/* these apply to links inside a single post */
 a:link, a:visited {
-	color: lightblue; /* was #0000E0; */
+	/* color: lightblue; was #0000E0; */
+	color: #0000FF;
 	text-decoration : none
 }
-
 a:hover, a:active {
 	color: #0000FF;
 	text-decoration : underline
 }
 
-style.css
-
-pre {
-	border: 1px solid lime ;
-	border-radius: 14px ;
-	padding: 1em ;
-	margin: 1em ;
+pre {
+	border: 1px solid lime;
+	border-radius: 14px;
+	padding: 1em;
+	margin: 1em;
 	white-space: pre-wrap;
 }
 
 code {
-	border-radius: 5px ;
-	overflow-wrap: break-word ;
+	border-radius: 5px;
+	overflow-wrap: break-word;
 }
 
 code:not(pre code) {
-	color: lime ;
+	color: lime;
 }
 
 /* Single column layout */
@@ -104,7 +108,7 @@ nav section, header section, main, footer section {
 /* Navigation panel */
 nav {
 	background: #333333;
-	border-bottom: thin solid #111111 ;
+	border-bottom: thin solid #111111;
 	line-height: 3em;
 }
 
@@ -131,10 +135,10 @@ nav a:hover, nav a:active {
 /* Footer */
 footer {
 	background: black; /* was #F0F0F0; */
-	border-top: thin solid #E0E0E0 ;
+	border-top: thin solid #E0E0E0;
 	margin-top: 2em;
 	padding: 1em 0;
-	box-shadow: 0 100vh 0 100vh #F0F0F0 ;
+	box-shadow: 0 100vh 0 100vh #F0F0F0;
 	text-align: center;
 }
 
@@ -160,23 +164,28 @@ article {
 	margin-bottom: 1em;
 }
 
+/* these apply to links inside a list of posts */
 article h2 a:link, article h2 a:visited,
 article h1 a:link, article h1 a:visited,
 .more:link, .more:visited {
-	color: #333333;
+	color: #0000FF;
+	text-decoration : none;
 }
 
 article h2 a:hover, article h2 a:active,
 article h1 a:hover, article h1 a:active,
 .more:hover, .more:active {
-	color: #777777;
+	color: #0000FF;
+	text-decoration : underline;
 }
 
 p.meta {
 	margin-top: 0;
+	padding-bottom: 0.5em;
+	text-align: center;
 	font-size: 0.8em;
-	color: #777777;
 	font-style: italic;
+	color: #777777;
 }
 
 p.summary {
