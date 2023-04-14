@@ -72,11 +72,11 @@ a {
 /* these apply to links inside a single post */
 a:link, a:visited {
 	/* color: lightblue; was #0000E0; */
-	color: #0000FF;
+	color: lime;
 	text-decoration : none
 }
 a:hover, a:active {
-	color: #0000FF;
+	color: lime;
 	text-decoration : underline
 }
 
@@ -117,11 +117,11 @@ nav a {
 }
 
 nav a:link, nav a:visited {
-	color: lightblue; /* was #CCCCCC; */
+	color: lime; /* was #CCCCCC; */
 }
 
 nav a:hover, nav a:active {
-	color: blue; /* was #FFFFFF; */
+	color: lime; /* was #FFFFFF; */
 	text-decoration : none;
 }
 
@@ -150,6 +150,10 @@ footer a {
 	margin-right: 1em;
 }
 
+footer a:link, footer a:visited , footer a:hover, footer a:active {
+	color: lime;
+}
+
 /*
 footer a:last-child {
 	margin-right: 0;
@@ -168,14 +172,14 @@ article {
 article h2 a:link, article h2 a:visited,
 article h1 a:link, article h1 a:visited,
 .more:link, .more:visited {
-	color: #0000FF;
+	color: lime;
 	text-decoration : none;
 }
 
 article h2 a:hover, article h2 a:active,
 article h1 a:hover, article h1 a:active,
 .more:hover, .more:active {
-	color: #0000FF;
+	color: lime;
 	text-decoration : underline;
 }
 
@@ -190,7 +194,7 @@ p.meta {
 
 p.summary {
 	margin-top: 0.25em;
-	margin-bottom: 0.25em;
+	margin-bottom: 4em; /* was 0.25em; */
 }
 
 div .more {
