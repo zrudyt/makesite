@@ -55,7 +55,6 @@
 REMOTE_USER=""
 REMOTE_HOST=""
 REMOTE_PATH=""
-LOCAL_WWW=""
 
 # ----------------------------------------------------------------------
 #  G L O B A L   P A R A M E T E R S   A N D   V A R I A B L E S
@@ -147,13 +146,15 @@ has_invalid_tags () {
 # ----------------------------------------------------------------------------
 post_or_draft () {
   # TODO check for filename collisions
+  # TODO D for Drafts
+  # TODO add (E)dit and (V)iew in browser
   post="$1"
 
   f="${post##*/}"        # filename: 2023-01-01-dummy.md'
   do_loop="true"
   while [ "$do_loop" = "true" ]; do
     do_loop="false"
-    prompt "(P)ost, (S)ave draft, (L)eave in existing dir, or (D)elete draft: "
+    prompt "(P)ost, (R)e-edit, save as (D)raft, (L)eave in existing dir, or (E)rase file: "
     read -r key
     case "$key" in
       p|P )
@@ -162,14 +163,17 @@ post_or_draft () {
         [ -f "$d_subdir/$f" ] || { mv -u "$post" "$d_subdir" || exit 1; }
         echo "$d_subdir/$f"
         ;;
-      l|L )
-        echo "$post"
+      r|R )
+        cmd_edit "$post"
         ;;
-      s|S )
+      d|D )
         [ -f "$d_drafts/$f" ] || { mv -u "$post" "$d_drafts" || exit 1; }
         echo "$d_drafts/$f"
         ;;
-      d|D )
+      l|L )
+        echo "$post"
+        ;;
+      e|E )
         rm -i "$post" || exit 1
         ;;
       * )
@@ -307,6 +311,14 @@ cmd_delete () {
 }
 
 # ----------------------------------------------------------------------------
+cmd_makesite () {
+  rebuild_indexes
+  ./makesite.py
+  # [ -z "$LOCAL_WWW" ] && die "Set 'LOCAL_WWW=' in '.config'"
+  # rsync --delete -rtzvcl "$d_site/" "${LOCAL_WWW}/${d_site}"  # -ravc
+}
+
+# ----------------------------------------------------------------------------
 # -r recursive -t preserve modification time -z compress
 # -v verbose   -u skip newer files at dest   --exclude=dir or file to exclude
 # -e execute   -c checksum comparison        -l copy symlinks as symlinks
@@ -328,20 +340,15 @@ cmd_delete () {
 # rsync --delete -rtzvcl "_site/" "$LOCAL_WWW"  # -ravc
 # ----------------------------------------------------------------------------
 cmd_publish () {
-  [ $# -lt 2 ] || die "'publish' expected 0 or 1 parameter, but got $#"
+  [ $# -eq 0 ] || die "'publish' expected 0 parameters, but got $#"
 
-  if [ $# -eq 0 ]; then
-    [ -z "$REMOTE_USER" ] && die "Set 'REMOTE_USER=' in '.config'"
-    [ -z "$REMOTE_HOST" ] && die "Set 'REMOTE_HOST=' in '.config'"
-    [ -z "$REMOTE_PATH" ] && die "Set 'REMOTE_PATH=' in '.config'"
-    rsync --delete -rtzvcl "$d_site/" \
-      "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}/${d_site}"
-  elif [ "$1" = "local" ]; then
-    [ -z "$LOCAL_WWW" ] && die "Set 'LOCAL_WWW=' in '.config'"
-    rsync --delete -rtzvcl "$d_site/" "${LOCAL_WWW}/${d_site}"  # -ravc
-  else
-    die "Invalid parameter: $1"
-  fi
+  [ -z "$REMOTE_USER" ] && die "Set 'REMOTE_USER=' in '.config'"
+  [ -z "$REMOTE_HOST" ] && die "Set 'REMOTE_HOST=' in '.config'"
+  [ -z "$REMOTE_PATH" ] && die "Set 'REMOTE_PATH=' in '.config'"
+
+  cmd_makesite
+  rsync --delete -rtzvcl "$d_site/" \
+    "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}/${d_site}"
 }
 
 # ----------------------------------------------------------------------------
@@ -358,7 +365,7 @@ cat <<- EOF
 	    "$pgm" search <pattern_inside_files>      [case sensitive]
 	    "$pgm" tags <pattern>                     [case sensitive]
 	    "$pgm" makesite
-	    "$pgm" publish [local]         [default: publish to remote host]
+	    "$pgm" publish
 	    "$pgm" test <n>
 	    "$pgm" help
 EOF
@@ -399,11 +406,21 @@ main () {
   cmd="$1"
   shift
 
+  # TODO no message if defaulteditor or defaultbrowser
   if [ -z "$EDITOR" ]; then
     EDITOR="vi"
-    yellowprint "\$EDITOR not set - assuming vi"
+    yellowprint "\$EDITOR not set - assuming 'vi'"
     yellowprint "Add next line to '.config' to define your editor (ex. nano)"
     cyanprint "    EDITOR='nano'\n"
+    prompt "Hit [Enter] to continue "
+    read -r key
+  fi
+
+  if [ -z "$BROWSER" ]; then
+    BROWSER="defaultbrowser"
+    yellowprint "\$BROWSER not set - assuming 'defaultbrowser'"
+    yellowprint "Add next line to '.config' to define your browser (ex. firefox)"
+    cyanprint "    BROWSER='firefox'\n"
     prompt "Hit [Enter] to continue "
     read -r key
   fi
@@ -412,16 +429,15 @@ main () {
   [ -d "$d_drafts" ] || mkdir -p "$d_drafts"
 
   case "$cmd" in
-    new )      cmd_newpost "$@";;
-    edit )     cmd_edit "$@";;
-    delete )   cmd_delete "$@";;
-    rename )   cmd_rename "$@";;
+    new )      cmd_newpost "$@"; cmd_makesite;;
+    edit )     cmd_edit "$@"; cmd_makesite;;
+    delete )   cmd_delete "$@"; cmd_makesite;;
+    rename )   cmd_rename "$@"; cmd_makesite;;
     list )     cmd_list "$@";;
     search )   cmd_search "$@";;
     tags)      cmd_tags "$@";;
-    makesite ) rebuild_indexes; ./makesite.py;;
+    makesite ) cmd_makesite;;
     publish )  cmd_publish "$@";;
-    rebuild )  rebuild_indexes;;
     test )     run_tests "$@";;
     help )     show_usage; exit 2;;
     * )     die "Illegal command: '$cmd'";;
