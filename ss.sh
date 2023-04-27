@@ -2,23 +2,20 @@
 
 # shellcheck shell=dash
 
-# ======================================================================
+# ============================================================================
 #  ss.sh - shell site : simple shell blogging front end for makesite
-# ======================================================================
+# ============================================================================
 #  Copyright (c) 2023 zrudyt <zrudyt@ at hotmail dot com>
 #  All rights reserved
-# ----------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 #  This script ...
 #
 #   TODO separate executable and content dirs
 #   TODO combine params.json and .config into one single file
 #
-#   <!-- title: Insert post title here -->
-#   <!-- tags: space delimited list of applicable tags -->
-#
 #   Pre-requisites:
 #
-#   - POSIX shell (sh, ash, dash, etc.) or better (bash, zsh, etc.)
+#   - POSIX shell (sh, ash, dash, etc.)
 #   - Python 3.8 or better to run makesite.py
 
 #   Installation notes:
@@ -28,25 +25,24 @@
 # ----------------------------------------------------------------------------
 #  The MIT License (MIT)
 #
-#  Permission is hereby granted, free of charge, to any person obtaining
-#  a copy of this software and associated documentation files (the
-#  "Software"), to deal in the Software without restriction, including
-#  without limitation the rights to use, copy, modify, merge, publish,
-#  distribute, sublicense, and/or sell copies of the Software, and to
-#  permit persons to whom the Software is furnished to do so, subject to
-#  the following conditions:
+#  Permission is hereby granted, free of charge, to any person obtaining a
+#  copy of this software and associated documentation files (the "Software"),
+#  to deal in the Software without restriction, including without limitation
+#  the rights to use, copy, modify, merge, publish, distribute, sublicense,
+#  and/or sell copies of the Software, and to permit persons to whom the
+#  Software is furnished to do so, subject to the following conditions:
 #
 #  The above copyright notice and this permission notice shall be
 #  included in all copies or substantial portions of the Software.
 #
-#  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-#  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-#  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-#  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-#  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-#  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-#  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-# ----------------------------------------------------------------------
+#  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+#  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+#  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+#  THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+#  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+#  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+#  DEALINGS IN THE SOFTWARE.
+# ----------------------------------------------------------------------------
 
 # ----------------------------------------------------------------------------
 #   U S E R   D E F I N E D   P A R A M E T E R S
@@ -56,11 +52,13 @@ REMOTE_USER=""
 REMOTE_HOST=""
 REMOTE_PATH=""
 
-# ----------------------------------------------------------------------
+BLOG="${BLOG:-"blog"}"          # can access other blogs like BLOG=news ss.sh
+
+# ----------------------------------------------------------------------------
 #  G L O B A L   P A R A M E T E R S   A N D   V A R I A B L E S
-# ----------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 # parameters that shouldn't need to change, but can be overridden in '.config'
-d_blog="content/blog"           # TODO make blog an optional command line parameter
+d_blog="content/$BLOG"
 d_drafts="drafts"               # must be outside 'content' dir
 d_site="_site"                  # where makesite.py puts its generated site
 post_template=".post"           # there should be a .md and a .html version
@@ -97,83 +95,113 @@ get_post_by_id () {
 #   if $1 is all digits, then it's an ID, otherwise it's a file path
 # ----------------------------------------------------------------------------
 is_id () {
-  test -z "$(echo "$1" | tr -d '0-9' || true)"
+  test -z "$(echo "$1" | tr -d '[:digit;]' || true)"
 }
 
 # ----------------------------------------------------------------------------
 extract_title_from_post () {
   token='<!-- title: '
-  post="$1"
   is_id "$1" && post="$(get_post_by_id "$1")"
-  t="$(grep -m1 "$token" "$post" 2> /dev/null | sed "s/$token\(.*\) -->/\\1/")"
+  t="$(grep -m1 "$token" "$1" 2> /dev/null | sed "s/$token\(.*\) -->/\\1/")"
   # sanitize string
   echo "$t" \
-    | sed -e 's/[^A-Za-z0-9._-]/-/g' -e 's/-\+/-/g' -e 's/-$//' -e 's/^-//' \
+    | sed -e 's/[^A-Za-z0-9_-]/-/g' -e 's/-\+/-/g' -e 's/-$//' -e 's/^-//' \
     | tr '[:upper:]' '[:lower:]'
 }
 
 # ----------------------------------------------------------------------------
-#   delete all valid characters from string, leaving only characters
-#   that we don't want to use in filenames
-# ----------------------------------------------------------------------------
-is_invalid () {
-  bad_chars=$(echo "$1" | tr -d 'A-Za-z0-9._\-\ ')
-  test -n "$bad_chars"
-}
-
-# ----------------------------------------------------------------------------
+#   function checks for tags with illegal characters because makesite.py
+#   creates index file for each tag --> don't want invalid chars in filenames
+#
 #   $1 : $post
 # ----------------------------------------------------------------------------
 has_invalid_tags () {
+  # delete all valid characters from string, leaving only characters
+  # that we don't want to use in filenames
   tags="$(sed -n "s/<!-- tags: \+\(.*\) -->/\\1/p" "$1")"
-  if is_invalid "$tags" ; then
-    redprint "Invalid character(s) found in one or more tags below"
-    echo "    $tags"
-    promptlite "Hit any key to re-edit file: "
-    read -r key
-    return 0
-  else
-    return 1
-  fi
+  bad_chars=$(echo "$tags" | tr -d 'A-Za-z0-9_\-\ ')
+  test -n "$bad_chars"
+  return $?
 }
 
 # ----------------------------------------------------------------------------
-#   function also checks for tags with illegal characters because makesite.py
-#   creates index file for each tag --> don't want invalid chars in filenames
-#     $1 : $post - two possible formats
-#                1. content/blog/2023-01/2023-01-01-dummy.md
-#                2. drafts/2023-01-01-dummy.md
+rebuild_all () {
+  get_all_posts | while read -r line; do
+    post="${line#*: }"               # content/blog/2023-03/2023-03-12-post.md
+    [ -z "$post" ] && die "Post '$post' does not exist"
+
+    has_invalid_tags "$post" \
+      && { echo -n "$line"; yellowprint " <-- has invalid tag(s)"; continue; }
+
+    postfile="${post##*/}"                              # 2023-03-12-post.md
+    oldtitle="$(echo "${postfile%.*}" | cut -b12-)"     # post
+    newtitle="$(extract_title_from_post "$post")"
+    if [ "$oldtitle" != "$newtitle" ]; then
+      postdir="${post%/*}"                              # content/blog/2023-03
+      ext="${post##*.}"                                 # md
+      slug="$(echo "$postfile" | cut -b1-10)"           # 2023-03-12
+      mv -i -u "$post" "${postdir}/${slug}-${newtitle}.${ext}" || exit 1
+    fi
+  done
+}
+
 # ----------------------------------------------------------------------------
-post_or_draft () {
-  # TODO check for filename collisions
-  # TODO D for Drafts
-  # TODO add (E)dit and (V)iew in browser
+edit_and_validate () {
+  valid="false"
+  while [ "$valid" = "false" ]; do
+    "$EDITOR" "$1" || exit 1
+    if has_invalid_tags "$1"; then
+      echo -n "$1"; yellowprint " <-- has invalid tag(s)"
+      echo "    Tags: $tags"
+      promptlite "Hit any key to re-edit file: "
+      read -r key
+    else
+      valid="true"
+    fi
+  done
+}
+
+# ----------------------------------------------------------------------------
+#   Usage: do_actions <post>
+#     $post : three possible formats
+#             1. content/blog/2023-01/2023-01-01-title.md
+#             2. drafts/2023-01-01-title.md
+#             3. drafts/.2023-01-01-title.md.XXXX
+#   NO RECURSION ALLOWED - this function must not call cmd_edit() because
+#   we're already in cmd_edit()
+# ----------------------------------------------------------------------------
+do_actions () {
+  # TODO (V)iew in browser
+  key=""
+  [ $# -eq 2 ] && { key="$1"; shift; }
   post="$1"
 
-  f="${post##*/}"        # filename: 2023-01-01-dummy.md'
+  f="${post##*/}"        # filename: 2023-01-01-title.md'
   do_loop="true"
   while [ "$do_loop" = "true" ]; do
     do_loop="false"
-    prompt "(P)ost, (R)e-edit, save as (D)raft, (L)eave in existing dir, or (E)rase file: "
-    read -r key
+    if [ -z "$key" ]; then
+      prompt "(P)ost, (E)dit, save as (D)raft, (L)eave in existing dir, or (R)emove file: "
+      read -r key
+    fi
     case "$key" in
       p|P )
         d_subdir="$d_blog/$(echo "$f" | head -c7 -)"  # content/blog/2023-01
         [ -d "$d_subdir" ] || mkdir -p "$d_subdir"
-        [ -f "$d_subdir/$f" ] || { mv -u "$post" "$d_subdir" || exit 1; }
+        [ -f "$d_subdir/$f" ] || { mv -i -u "$post" "$d_subdir" || exit 1; }
         echo "$d_subdir/$f"
         ;;
-      r|R )
-        cmd_edit "$post"
+      e|E )
+        return 1
         ;;
       d|D )
-        [ -f "$d_drafts/$f" ] || { mv -u "$post" "$d_drafts" || exit 1; }
+        [ -f "$d_drafts/$f" ] || { mv -i -u "$post" "$d_drafts" || exit 1; }
         echo "$d_drafts/$f"
         ;;
       l|L )
         echo "$post"
         ;;
-      e|E )
+      r|R )
         rm -i "$post" || exit 1
         ;;
       * )
@@ -182,42 +210,9 @@ post_or_draft () {
         ;;
     esac
   done
-}
-
-# ----------------------------------------------------------------------------
-rebuild_indexes () {
-  redprint "rebuild_indexes(): Not implemented yet!"
-  get_all_posts | while read -r line; do
-    post="${line#*: }"
-    has_invalid_tags "$post" && cmd_edit "$post"
-  done
-}
-
-# ----------------------------------------------------------------------------
-cmd_newpost () {
-  [ $# -lt 2 ] || die "'new' expected 0 or 1 parameter, but got $#"
-  # shell-check complains about the && followed by ||, but if we
-  # change 'die' to 'echo' it doesn't complain so I'm leaving it
-  fmt="md"
-  if [ $# -eq 1 ]; then
-    [ "$1" = '-h' ] && fmt="html" || die "Invalid parameter: $1"
-  fi
-
-  tmpfile="$(mktemp -u -t "post.XXXXXX").$fmt"
-  cp "$post_template.$fmt" "$tmpfile" || exit 1
-
-  valid="false"
-  while [ "$valid" = "false" ]; do
-    "$EDITOR" "$tmpfile" || exit 1
-    has_invalid_tags "$tmpfile" || valid="true"
-  done
-
-  title="$(extract_title_from_post "$tmpfile")"
-  slug="$(date +%Y-%m-%d)"
-  slugfile="${slug}-${title}.${fmt}"
-  mv "$tmpfile" "$d_drafts/$slugfile"   # TODO check for collisions
-
-  post_or_draft "$d_drafts/$slugfile"
+  echo -n "Rebulding ... "
+  cmd_makesite > /dev/null 2>&1
+  echo "Done."
 }
 
 # ----------------------------------------------------------------------------
@@ -228,21 +223,40 @@ cmd_edit () {
   is_id "$1" && post="$(get_post_by_id "$1")"
   [ -n "$post" ] || die "Post $1 does not exist"
 
-  valid="false"
-  while [ "$valid" = "false" ]; do
-    "$EDITOR" "$post" || exit 1
-    has_invalid_tags "$post" || valid="true"
-  done
+  edit_and_validate "$post"
 
-  d_orig="${post%/*}"            # directory: 'drafts' or 'content/blog/subdir'
-  filename="${post##*/}"         # filename: 2023-01-01-dummy.md'
-  slug="$(echo "$filename" | head -c10 -)"  # 2023-01-01
-  fmt="${post##*.}"
+  d_orig="${post%/*}"   # drafts  *OR* content/blog/subdir
+  f_post="${post##*/}"  # 2023-01-01-title.md  *OR* .2023-01-01-newpost.md.XXXX
+  if [ -z "${f_post##.*}" ]; then  # .2023-01-01-newpost.md.XXXX
+    f_post="${f_post#.}"           # 2023-01-01-newpost.md.XXXX
+    f_post="${f_post%.*}"          # 2023-01-01-newpost.md
+  fi
+
+  slug="$(echo "$f_post" | head -c10 -)"  # 2023-01-01
+  fmt="${f_post##*.}"
   title="$(extract_title_from_post "$post")"
   newpost="${d_orig}/${slug}-${title}.${fmt}"
-  [ -f "$newpost" ] || { mv -u "$post" "$newpost" || exit 1; }
+  # the following line just renames the file - it doesn't *move* it
+  [ -f "$newpost" ] || { mv -i -u "$post" "$newpost" || exit 1; }
 
-  post_or_draft "$newpost"
+  do_actions "$newpost"
+}
+
+# ----------------------------------------------------------------------------
+cmd_newpost () {
+  [ $# -lt 2 ] || die "'new' expected 0 or 1 parameter, but got $#"
+  fmt="md"
+  if [ $# -eq 1 ]; then
+    # shell-check complains about the && followed by ||, but if we
+    # change 'die' to 'echo' it doesn't complain so I'm leaving it
+    [ "$1" = '-h' ] && fmt="html" || die "Invalid parameter: $1"
+  fi
+
+  slug="$(date +%Y-%m-%d)"
+  tmpfile="$(mktemp -p "$d_drafts" -t ".${slug}-newpost.${fmt}.XXXX")"
+  cp "$post_template.$fmt" "$tmpfile" || exit 1
+
+  cmd_edit "$tmpfile"
 }
 
 # ----------------------------------------------------------------------------
@@ -284,25 +298,6 @@ cmd_tags () {
 }
 
 # ----------------------------------------------------------------------------
-cmd_rename () {
-  [ $# -eq 0 ] || die "'rename' expected 0 parameters, but got $#"
-
-  get_all_posts | while read -r line; do
-    post="${line#*: }"            # content/blog/2023-03/2023-03-12-a-post.md
-    [ -z "$post" ] && die "Post $1 does not exist"
-
-    # you can do this all in sed but it's ugly and hard to tweak leter on
-    postfile="${post##*/}"                    # 2023-03-12-a-post.md
-    postdir="${post%/*}"                      # content/blog/2023-03
-    ext="${post##*.}"                         # md
-    slug="$(echo "$postfile" | cut -b1-10)"   # 2023-03-12
-    newtitle="$(extract_title_from_post "$post")"
-
-    mv -u "$post" "${postdir}/${slug}-${newtitle}.${ext}" || exit 1
-  done
-}
-
-# ----------------------------------------------------------------------------
 cmd_delete () {
   [ $# -gt 0 ] || die "'delete' expected 1 or more parameters, but got $#"
 
@@ -311,32 +306,21 @@ cmd_delete () {
 }
 
 # ----------------------------------------------------------------------------
-cmd_makesite () {
-  rebuild_indexes
-  ./makesite.py
+cmd_rebuild () {
+  [ $# -eq 0 ] || die "'publish' expected 0 parameters, but got $#"
+
+  rebuild_all
+  ./makesite.py 2> /dev/null  # this program uses STDERR for routine output 2> /dev/null  # this program uses STDERR for routine output
   # [ -z "$LOCAL_WWW" ] && die "Set 'LOCAL_WWW=' in '.config'"
   # rsync --delete -rtzvcl "$d_site/" "${LOCAL_WWW}/${d_site}"  # -ravc
 }
 
 # ----------------------------------------------------------------------------
-# -r recursive -t preserve modification time -z compress
-# -v verbose   -u skip newer files at dest   --exclude=dir or file to exclude
-# -e execute   -c checksum comparison        -l copy symlinks as symlinks
-#
 # publish to remote web server
+# note, REMOTEPATH is relative to wherever ssh has logged in.
+# rsync --delete -rltzvuc LOCAL/ REMOTE_USER@REMOTE_HOST:REMOTE_PATH
 #
-# rsync --delete -rltzvuc -e "ssh -p 22" LOCAL/ REMOTE_USER@REMOTE_HOST:REMOTE_PATH
-###replace REMOTE_USER, REMOTE_HOST, REMOTE_PATH, and change port if not 22. ex:
-#note, REMOTEPATH is relative to wherever ssh has logged in.
-
-#ex:
-# rsync --delete -rltzvuc -e "ssh -p 22" $PATH1/ mrperson@guardedhost.com:${PATH1}
-#...assumes that login is above 'www'. For omnis.com "../bkhome.org/" has to be prepended.
-#...some hosts have "public_html" instead of "www", so you will need to modify
-#   this script to change $PATH1 on the end of above example.
-
-# publish to local web server by rsyncing _site files to local folder
-# no ssh needed
+# publish to local web server by rsyncing _site files to local WWW root
 # rsync --delete -rtzvcl "_site/" "$LOCAL_WWW"  # -ravc
 # ----------------------------------------------------------------------------
 cmd_publish () {
@@ -347,7 +331,7 @@ cmd_publish () {
   [ -z "$REMOTE_PATH" ] && die "Set 'REMOTE_PATH=' in '.config'"
 
   cmd_makesite
-  rsync --delete -rtzvcl "$d_site/" \
+  rsync --delete -rltzvc "$d_site/" \
     "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}/${d_site}"
 }
 
@@ -360,57 +344,23 @@ cat <<- EOF
 	    "$pgm" new [-h]  --> type is Markdown, unless '-h' for HTML
 	    "$pgm" edit <n>
 	    "$pgm" delete <n> [n1] [n2] [...]
-	    "$pgm" rename      [rename all posts with title from inside each]
 	    "$pgm" list <string_in_filename>          [case insensitive]
 	    "$pgm" search <pattern_inside_files>      [case sensitive]
 	    "$pgm" tags <pattern>                     [case sensitive]
-	    "$pgm" makesite
 	    "$pgm" publish
+	    "$pgm" rebuild                    [check titles vs filenames and regen]
 	    "$pgm" test <n>
 	    "$pgm" help
 EOF
 }
 
 # ----------------------------------------------------------------------------
-run_tests () {
-  [ $# -eq 1 ] && id="$1" || id="1"
-  echo; redprint "INTERNAL FUNCTIONS"
-  echo ; echo "---- get_all_posts ----"
-  get_all_posts
-  echo ; echo "---- get_post_by_id $id ----"
-  p="$(get_post_by_id "$id")"
-  echo ">>>$p<<<"
-  echo ; echo "---- extract_title_from_post $id ----"
-  t="$(extract_title_from_post "$id")"
-  echo ">>>$t<<<"
-  echo ; echo "---- extract_title_from_post '$p' ----"
-  t="$(extract_title_from_post "$p")"
-  echo ">>>$t<<<"
-  echo ; echo "---- sanitize_string '$t' ----"
-  s="$(sanitize_string "$t")"
-  echo ">>>$s<<<"
-
-  echo; redprint "TOP LEVEL FUNCTIONS"
-  echo ; echo "---- list  NetBSD ----"
-  cmd_list "NetBSD"
-  echo ; echo "---- search  NetBSD ----"
-  cmd_search "NetBSD"
-  echo ; echo "---- tags  NetBSD ----"
-  cmd_tags "NetBSD"
-}
-
-# ----------------------------------------------------------------------------
-main () {
-  # sanity cheques
-  [ $# -eq 0 ] && { show_usage; exit 2; }
-  cmd="$1"
-  shift
-
+do_sanity_cheques () {
   # TODO no message if defaulteditor or defaultbrowser
   if [ -z "$EDITOR" ]; then
     EDITOR="vi"
     yellowprint "\$EDITOR not set - assuming 'vi'"
-    yellowprint "Add next line to '.config' to define your editor (ex. nano)"
+    yellowprint "Add next line to '.config' to set your editor (ex. nano)"
     cyanprint "    EDITOR='nano'\n"
     prompt "Hit [Enter] to continue "
     read -r key
@@ -419,26 +369,32 @@ main () {
   if [ -z "$BROWSER" ]; then
     BROWSER="defaultbrowser"
     yellowprint "\$BROWSER not set - assuming 'defaultbrowser'"
-    yellowprint "Add next line to '.config' to define your browser (ex. firefox)"
+    yellowprint "Add next line to '.config' to set your browser (ex. firefox)"
     cyanprint "    BROWSER='firefox'\n"
     prompt "Hit [Enter] to continue "
     read -r key
   fi
+}
+
+# ----------------------------------------------------------------------------
+main () {
+  [ $# -eq 0 ] && { show_usage; exit 2; }
+  do_sanity_cheques
+  cmd="$1"
+  shift
 
   [ -f ".config" ] && . "./.config"
   [ -d "$d_drafts" ] || mkdir -p "$d_drafts"
 
   case "$cmd" in
-    new )      cmd_newpost "$@"; cmd_makesite;;
-    edit )     cmd_edit "$@"; cmd_makesite;;
-    delete )   cmd_delete "$@"; cmd_makesite;;
-    rename )   cmd_rename "$@"; cmd_makesite;;
+    new )      cmd_newpost "$@";;
+    edit )     cmd_edit "$@";;
+    delete )   cmd_delete "$@";;
     list )     cmd_list "$@";;
     search )   cmd_search "$@";;
     tags)      cmd_tags "$@";;
-    makesite ) cmd_makesite;;
     publish )  cmd_publish "$@";;
-    test )     run_tests "$@";;
+    rebuild )  cmd_rebuild "$@";;
     help )     show_usage; exit 2;;
     * )     die "Illegal command: '$cmd'";;
   esac
