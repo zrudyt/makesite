@@ -95,7 +95,7 @@ get_post_by_id () {
 #   if $1 is all digits, then it's an ID, otherwise it's a file path
 # ----------------------------------------------------------------------------
 is_id () {
-  test -z "$(echo "$1" | tr -d '[:digit;]' || true)"
+  test -z "$(printf "%s" "$1" | tr -d '[:digit:]' || true)"
 }
 
 # ----------------------------------------------------------------------------
@@ -104,7 +104,7 @@ extract_title_from_post () {
   is_id "$1" && post="$(get_post_by_id "$1")"
   t="$(grep -m1 "$token" "$1" 2> /dev/null | sed "s/$token\(.*\) -->/\\1/")"
   # sanitize string
-  echo "$t" \
+  printf "%s" "$t" \
     | sed -e 's/[^A-Za-z0-9_-]/-/g' -e 's/-\+/-/g' -e 's/-$//' -e 's/^-//' \
     | tr '[:upper:]' '[:lower:]'
 }
@@ -119,7 +119,7 @@ has_invalid_tags () {
   # delete all valid characters from string, leaving only characters
   # that we don't want to use in filenames
   tags="$(sed -n "s/<!-- tags: \+\(.*\) -->/\\1/p" "$1")"
-  bad_chars=$(echo "$tags" | tr -d 'A-Za-z0-9_\-\ ')
+  bad_chars=$(printf "%s" "$tags" | tr -d 'A-Za-z0-9_\-\ ')
   test -n "$bad_chars"
   return $?
 }
@@ -131,15 +131,15 @@ rebuild_all () {
     [ -z "$post" ] && die "Post '$post' does not exist"
 
     has_invalid_tags "$post" \
-      && { echo -n "$line"; yellowprint " <-- has invalid tag(s)"; continue; }
+      && { printf "%s" "$line"; yellowprint " <-- has invalid tag(s)"; continue; }
 
     postfile="${post##*/}"                              # 2023-03-12-post.md
-    oldtitle="$(echo "${postfile%.*}" | cut -b12-)"     # post
+    oldtitle="$(printf "%s" "${postfile%.*}" | cut -b12-)"     # post
     newtitle="$(extract_title_from_post "$post")"
     if [ "$oldtitle" != "$newtitle" ]; then
       postdir="${post%/*}"                              # content/blog/2023-03
       ext="${post##*.}"                                 # md
-      slug="$(echo "$postfile" | cut -b1-10)"           # 2023-03-12
+      slug="$(printf "%s" "$postfile" | cut -b1-10)"           # 2023-03-12
       mv -i -u "$post" "${postdir}/${slug}-${newtitle}.${ext}" || exit 1
     fi
   done
@@ -151,9 +151,9 @@ edit_and_validate () {
   while [ "$valid" = "false" ]; do
     "$EDITOR" "$1" || exit 1
     if has_invalid_tags "$1"; then
-      echo -n "$1"; yellowprint " <-- has invalid tag(s)"
-      echo "    Tags: $tags"
-      promptlite "Hit any key to re-edit file: "
+      printf "%s" "$1"; yellowprint " <-- has invalid tag(s)"
+      printf "    Tags: %s\n" "$tags"
+      promptlite "Hit any key to re-edit file or Ctrl-C to abort: "
       read -r key
     else
       valid="true"
@@ -172,18 +172,14 @@ edit_and_validate () {
 # ----------------------------------------------------------------------------
 do_actions () {
   # TODO (V)iew in browser
-  key=""
-  [ $# -eq 2 ] && { key="$1"; shift; }
   post="$1"
 
-  f="${post##*/}"        # filename: 2023-01-01-title.md'
+  f="${post##*/}"        # f: 2023-01-01-title.md'
   do_loop="true"
   while [ "$do_loop" = "true" ]; do
     do_loop="false"
-    if [ -z "$key" ]; then
-      prompt "(P)ost, (E)dit, save as (D)raft, (L)eave in existing dir, or (R)emove file: "
-      read -r key
-    fi
+    prompt "(P)ost, (E)dit, save as (D)raft, (L)eave in existing dir, or (R)emove file: "
+    read -r key
     case "$key" in
       p|P )
         d_subdir="$d_blog/$(echo "$f" | head -c7 -)"  # content/blog/2023-01
@@ -192,7 +188,8 @@ do_actions () {
         echo "$d_subdir/$f"
         ;;
       e|E )
-        return 1
+        edit_and_validate "$post"
+        do_loop="true"
         ;;
       d|D )
         [ -f "$d_drafts/$f" ] || { mv -i -u "$post" "$d_drafts" || exit 1; }
@@ -210,9 +207,9 @@ do_actions () {
         ;;
     esac
   done
-  echo -n "Rebulding ... "
+  printf "%s" "Rebulding ... "
   cmd_makesite > /dev/null 2>&1
-  echo "Done."
+  printf "%s\n" "Done."
 }
 
 # ----------------------------------------------------------------------------
@@ -225,14 +222,14 @@ cmd_edit () {
 
   edit_and_validate "$post"
 
-  d_orig="${post%/*}"   # drafts  *OR* content/blog/subdir
+  d_orig="${post%/*}"                     # drafts  *OR* content/blog/subdir
   f_post="${post##*/}"  # 2023-01-01-title.md  *OR* .2023-01-01-newpost.md.XXXX
-  if [ -z "${f_post##.*}" ]; then  # .2023-01-01-newpost.md.XXXX
-    f_post="${f_post#.}"           # 2023-01-01-newpost.md.XXXX
-    f_post="${f_post%.*}"          # 2023-01-01-newpost.md
+  if [ -z "${f_post##.*}" ]; then         # .2023-01-01-newpost.md.XXXX
+    f_post="${f_post#.}"                  # 2023-01-01-newpost.md.XXXX
+    f_post="${f_post%.*}"                 # 2023-01-01-newpost.md
   fi
 
-  slug="$(echo "$f_post" | head -c10 -)"  # 2023-01-01
+  slug="$(printf "%s" "$f_post" | head -c10 -)"  # 2023-01-01
   fmt="${f_post##*.}"
   title="$(extract_title_from_post "$post")"
   newpost="${d_orig}/${slug}-${title}.${fmt}"
@@ -302,7 +299,7 @@ cmd_delete () {
   [ $# -gt 0 ] || die "'delete' expected 1 or more parameters, but got $#"
 
   posts="$(for id; do get_post_by_id "$id"; done)"
-  [ -n "$posts" ] && { echo "$posts" | xargs -n1 -o rm -i; }
+  [ -n "$posts" ] && { printf "%s" "$posts" | xargs -n1 -o rm -i; }
 }
 
 # ----------------------------------------------------------------------------
@@ -348,7 +345,7 @@ cat <<- EOF
 	    "$pgm" search <pattern_inside_files>      [case sensitive]
 	    "$pgm" tags <pattern>                     [case sensitive]
 	    "$pgm" publish
-	    "$pgm" rebuild                    [check titles vs filenames and regen]
+	    "$pgm" rebuild
 	    "$pgm" test <n>
 	    "$pgm" help
 EOF
