@@ -11,7 +11,6 @@
 #  This script ...
 #
 #   TODO separate executable and content dirs
-#   TODO combine params.json and .config into one single file
 #
 #   Pre-requisites:
 #
@@ -45,34 +44,51 @@
 # ----------------------------------------------------------------------------
 
 # ----------------------------------------------------------------------------
-#   U S E R   D E F I N E D   P A R A M E T E R S
-# ----------------------------------------------------------------------------
-# webserver parameters used in 'cmd_publish()' to be defined in '.config'
-REMOTE_USER=""
-REMOTE_HOST=""
-REMOTE_PATH=""
+get_json_param () {
+  if [ -e "params.json" ]; then
+    match="$(grep "\"$1\": " "params.json" 2> /dev/null)"
+    match="${match#*: \"}"
+    match="${match%\"*}"
+  else
+    match=""
+  fi
+  printf "%s" "$match"
+}
 
-BLOG="${BLOG:-"blog"}"          # can access other blogs like BLOG=news ss.sh
+# ----------------------------------------------------------------------------
+#   U S E R   D E F I N E D   P A R A M E T E R S   A N D   V A R I A B L E S
+# ----------------------------------------------------------------------------
+# webserver parameters for cmd_publish() to be defined in 'params.json'
+REMOTE_USER="$(get_json_param "remote_user")"
+REMOTE_HOST="$(get_json_param "remote_host")"
+REMOTE_PATH="$(get_json_param "remote_path")"
 
-# ----------------------------------------------------------------------------
-#  G L O B A L   P A R A M E T E R S   A N D   V A R I A B L E S
-# ----------------------------------------------------------------------------
-# parameters that shouldn't need to change, but can be overridden in '.config'
+# these are used by makesite.py, and used in this script only for (V)iew post
+SITE_URL="$(get_json_param "site_url")"
+BASE_PATH="$(get_json_param "base_path")"
+
+BLOG="${BLOG:-"blog"}"    # env var to access other blogs like BLOG=news ss.sh
+
+post_template=".post"           # there should be a .md and a .html version
+
+# parameters that shouldn't need to change unless makesite.py changes
 d_blog="content/$BLOG"
 d_drafts="drafts"               # must be outside 'content' dir
 d_site="_site"                  # where makesite.py puts its generated site
-post_template=".post"           # there should be a .md and a .html version
 
 set -o nounset
 
+# ----------------------------------------------------------------------------
+#   U T I L I T Y   F U N C T I O N S
+# ----------------------------------------------------------------------------
 redprint ()    { printf "\033[1;31m%s\033[0m\n" "$1" >&2; }
 greenprint ()  { printf "\033[0;32m%s\033[0m\n" "$1" >&2; }
 yellowprint () { printf "\033[0;33m%s\033[0m\n" "$1" >&2; }
 blueprint ()   { printf "\033[0;34m%s\033[0m\n" "$1" >&2; }
 cyanprint ()   { printf "\033[0;36m%s\033[0m\n" "$1" >&2; }
 ghostprint ()  { printf "\033[0;30m%s\033[0m\n" "$1" >&2; }
-promptlite ()  { printf "\033[0;32m%s\033[0m"   "$1" >&2; }  # no \n at EOL
-prompt ()      { printf "\033[1;32m%s\033[0m"   "$1" >&2; }  # no \n at EOL
+promptlite ()  { printf "\033[0;32m%s: \033[0m"   "$1" >&2; }  # no \n at EOL
+prompt ()      { printf "\033[1;32m%s: \033[0m"   "$1" >&2; }  # no \n at EOL
 
 die () { redprint "ERROR: $1"; exit 1; }
 
@@ -125,35 +141,14 @@ has_invalid_tags () {
 }
 
 # ----------------------------------------------------------------------------
-rebuild_all () {
-  get_all_posts | while read -r line; do
-    post="${line#*: }"               # content/blog/2023-03/2023-03-12-post.md
-    [ -z "$post" ] && die "Post '$post' does not exist"
-
-    has_invalid_tags "$post" \
-      && { printf "%s" "$line"; yellowprint " <-- has invalid tag(s)"; continue; }
-
-    postfile="${post##*/}"                              # 2023-03-12-post.md
-    oldtitle="$(printf "%s" "${postfile%.*}" | cut -b12-)"     # post
-    newtitle="$(extract_title_from_post "$post")"
-    if [ "$oldtitle" != "$newtitle" ]; then
-      postdir="${post%/*}"                              # content/blog/2023-03
-      ext="${post##*.}"                                 # md
-      slug="$(printf "%s" "$postfile" | cut -b1-10)"           # 2023-03-12
-      mv -i -u "$post" "${postdir}/${slug}-${newtitle}.${ext}" || exit 1
-    fi
-  done
-}
-
-# ----------------------------------------------------------------------------
 edit_and_validate () {
   valid="false"
   while [ "$valid" = "false" ]; do
     "$EDITOR" "$1" || exit 1
     if has_invalid_tags "$1"; then
-      printf "%s" "$1"; yellowprint " <-- has invalid tag(s)"
+      printf "%s" "$1"; redprint " <-- has invalid tag(s)"
       printf "    Tags: %s\n" "$tags"
-      promptlite "Hit any key to re-edit file or Ctrl-C to abort: "
+      promptlite "Hit any key to re-edit file or Ctrl-C to abort"
       read -r key
     else
       valid="true"
@@ -178,7 +173,9 @@ do_actions () {
   do_loop="true"
   while [ "$do_loop" = "true" ]; do
     do_loop="false"
-    prompt "(P)ost, (E)dit, save as (D)raft, (L)eave in existing dir, or (R)emove file: "
+    ps="(P)ost, (E)dit, save (D)raft, (R)emove"
+    [ "${post%/*}" = "$d_drafts" ] || ps="$ps, (V)iew in browser"
+    prompt "$ps"
     read -r key
     case "$key" in
       p|P )
@@ -186,17 +183,29 @@ do_actions () {
         [ -d "$d_subdir" ] || mkdir -p "$d_subdir"
         [ -f "$d_subdir/$f" ] || { mv -i -u "$post" "$d_subdir" || exit 1; }
         echo "$d_subdir/$f"
+        cmd_rebuild
         ;;
       e|E )
         edit_and_validate "$post"
         do_loop="true"
         ;;
-      d|D )
+      v|V )                              # View in broswer
+        if [ "${post%/*}" = "$d_drafts" ]; then
+          redprint "Illegal key: '$key' --> try again"
+        else
+          [ -n "$BASE_PATH" ] && SITE_URL="$SITE_URL/$BASE_PATH"
+          url="$SITE_URL/$BLOG"
+          # TODO use sed
+          url="$url/$(echo "$f" | head -c7 -)/$(echo "$f" | tail -c+12 -)"
+          echo "${url%.*}"
+          cmd_rebuild
+          "$BROWSER" "${url%.*}"
+        fi
+        do_loop="true"
+        ;;
+      d|D )                              # save as Draft
         [ -f "$d_drafts/$f" ] || { mv -i -u "$post" "$d_drafts" || exit 1; }
         echo "$d_drafts/$f"
-        ;;
-      l|L )
-        echo "$post"
         ;;
       r|R )
         rm -i "$post" || exit 1
@@ -208,7 +217,7 @@ do_actions () {
     esac
   done
   printf "%s" "Rebulding ... "
-  cmd_makesite > /dev/null 2>&1
+  cmd_rebuild # > /dev/null 2>&1
   printf "%s\n" "Done."
 }
 
@@ -306,10 +315,32 @@ cmd_delete () {
 cmd_rebuild () {
   [ $# -eq 0 ] || die "'publish' expected 0 parameters, but got $#"
 
-  rebuild_all
-  ./makesite.py 2> /dev/null  # this program uses STDERR for routine output 2> /dev/null  # this program uses STDERR for routine output
-  # [ -z "$LOCAL_WWW" ] && die "Set 'LOCAL_WWW=' in '.config'"
+  get_all_posts | while read -r line; do
+    post="${line#*: }"               # content/blog/2023-03/2023-03-12-post.md
+    [ -z "$post" ] && die "Post '$post' does not exist"
+
+    has_invalid_tags "$post" \
+      && { printf "%s" "$line"; yellowprint " <-- has invalid tag(s)"; continue; }
+
+    postfile="${post##*/}"                              # 2023-03-12-post.md
+    oldtitle="$(printf "%s" "${postfile%.*}" | cut -b12-)"     # post
+    newtitle="$(extract_title_from_post "$post")"
+    if [ "$oldtitle" != "$newtitle" ]; then
+      postdir="${post%/*}"                              # content/blog/2023-03
+      ext="${post##*.}"                                 # md
+      slug="$(printf "%s" "$postfile" | cut -b1-10)"           # 2023-03-12
+      mv -i -u "$post" "${postdir}/${slug}-${newtitle}.${ext}" || exit 1
+    fi
+  done
+
+  ./makesite.py  > /dev/null
+  # generates local site in _site directory, which is where we point our local
+  # webserver to. If the local webserver root is somewhere else, then use
+  # rsync (Note: wasteful since we now have 2 copies of the site)
+  # [ -z "$LOCAL_WWW" ] && die "Set 'LOCAL_WWW=' in 'params.json'"
   # rsync --delete -rtzvcl "$d_site/" "${LOCAL_WWW}/${d_site}"  # -ravc
+  # Two other alternatives are (1) _site is a symbolic link, or (2) change
+  # makesite.py to output directly into the local webserver root directory
 }
 
 # ----------------------------------------------------------------------------
@@ -323,11 +354,11 @@ cmd_rebuild () {
 cmd_publish () {
   [ $# -eq 0 ] || die "'publish' expected 0 parameters, but got $#"
 
-  [ -z "$REMOTE_USER" ] && die "Set 'REMOTE_USER=' in '.config'"
-  [ -z "$REMOTE_HOST" ] && die "Set 'REMOTE_HOST=' in '.config'"
-  [ -z "$REMOTE_PATH" ] && die "Set 'REMOTE_PATH=' in '.config'"
+  [ -z "$REMOTE_USER" ] && die "Set 'REMOTE_USER=' in 'params.json'"
+  [ -z "$REMOTE_HOST" ] && die "Set 'REMOTE_HOST=' in 'params.json'"
+  [ -z "$REMOTE_PATH" ] && die "Set 'REMOTE_PATH=' in 'params.json'"
 
-  cmd_makesite
+  cmd_rebuild
   rsync --delete -rltzvc "$d_site/" \
     "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}/${d_site}"
 }
@@ -354,21 +385,22 @@ EOF
 # ----------------------------------------------------------------------------
 do_sanity_cheques () {
   # TODO no message if defaulteditor or defaultbrowser
+  # TODO check for SS_EDITOR and SS_BROWSER
   if [ -z "$EDITOR" ]; then
     EDITOR="vi"
     yellowprint "\$EDITOR not set - assuming 'vi'"
-    yellowprint "Add next line to '.config' to set your editor (ex. nano)"
+    yellowprint "Add next line to 'params.json' to set your editor (ex. nano)"
     cyanprint "    EDITOR='nano'\n"
-    prompt "Hit [Enter] to continue "
+    prompt "Hit [Enter] to continue"
     read -r key
   fi
 
   if [ -z "$BROWSER" ]; then
     BROWSER="defaultbrowser"
     yellowprint "\$BROWSER not set - assuming 'defaultbrowser'"
-    yellowprint "Add next line to '.config' to set your browser (ex. firefox)"
+    yellowprint "Add next line to 'params.json' to set your browser (ex. firefox)"
     cyanprint "    BROWSER='firefox'\n"
-    prompt "Hit [Enter] to continue "
+    prompt "Hit [Enter] to continue"
     read -r key
   fi
 }
@@ -380,7 +412,6 @@ main () {
   cmd="$1"
   shift
 
-  [ -f ".config" ] && . "./.config"
   [ -d "$d_drafts" ] || mkdir -p "$d_drafts"
 
   case "$cmd" in
