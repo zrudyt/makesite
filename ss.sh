@@ -87,8 +87,8 @@ yellowprint () { printf "\033[0;33m%s\033[0m\n" "$1" >&2; }
 blueprint ()   { printf "\033[0;34m%s\033[0m\n" "$1" >&2; }
 cyanprint ()   { printf "\033[0;36m%s\033[0m\n" "$1" >&2; }
 ghostprint ()  { printf "\033[0;30m%s\033[0m\n" "$1" >&2; }
-promptlite ()  { printf "\033[0;32m%s: \033[0m"   "$1" >&2; }  # no \n at EOL
-prompt ()      { printf "\033[1;32m%s: \033[0m"   "$1" >&2; }  # no \n at EOL
+prompt ()      { printf "\033[1;32m%s: \033[0m" "$1" >&2; }  # no \n at EOL
+promptlite ()  { printf "\033[0;32m%s: \033[0m" "$1" >&2; }  # no \n at EOL
 
 die () { redprint "ERROR: $1"; exit 1; }
 
@@ -166,7 +166,6 @@ edit_and_validate () {
 #   we're already in cmd_edit()
 # ----------------------------------------------------------------------------
 do_actions () {
-  # TODO (V)iew in browser
   post="$1"
 
   f="${post##*/}"        # f: 2023-01-01-title.md'
@@ -175,6 +174,7 @@ do_actions () {
     do_loop="false"
     ps="(P)ost, (E)dit, save (D)raft, (R)emove"
     [ "${post%/*}" = "$d_drafts" ] || ps="$ps, (V)iew in browser"
+    ps="$ps, or e(X)it"
     prompt "$ps"
     read -r key
     case "$key" in
@@ -183,42 +183,50 @@ do_actions () {
         [ -d "$d_subdir" ] || mkdir -p "$d_subdir"
         [ -f "$d_subdir/$f" ] || { mv -i -u "$post" "$d_subdir" || exit 1; }
         echo "$d_subdir/$f"
-        cmd_rebuild
+        do_rebuild="true"
         ;;
       e|E )
         edit_and_validate "$post"
-        do_loop="true"
-        ;;
-      v|V )                              # View in broswer
-        if [ "${post%/*}" = "$d_drafts" ]; then
-          redprint "Illegal key: '$key' --> try again"
-        else
-          [ -n "$BASE_PATH" ] && SITE_URL="$SITE_URL/$BASE_PATH"
-          url="$SITE_URL/$BLOG"
-          # TODO use sed
-          url="$url/$(echo "$f" | head -c7 -)/$(echo "$f" | tail -c+12 -)"
-          echo "${url%.*}"
-          cmd_rebuild
-          "$BROWSER" "${url%.*}"
-        fi
+        do_rebuild="false"
         do_loop="true"
         ;;
       d|D )                              # save as Draft
         [ -f "$d_drafts/$f" ] || { mv -i -u "$post" "$d_drafts" || exit 1; }
         echo "$d_drafts/$f"
+        do_rebuild="true"
         ;;
       r|R )
         rm -i "$post" || exit 1
+        do_rebuild="true"
+        ;;
+      v|V )                              # View in broswer
+        if [ "${post%/*}" = "$d_drafts" ]; then
+          redprint "Illegal key: '$key' --> try again"
+          do_rebuild="false"
+        else
+          [ -n "$BASE_PATH" ] && SITE_URL="$SITE_URL/$BASE_PATH"
+          yyyymm="$(echo "$f" | head -c7 -)"
+          title="$(echo "$f" | tail -c+12 -)"
+          title="${title%.*}"
+          url="$SITE_URL/$BLOG/$yyyymm/$title"
+          echo "$url"
+          cmd_rebuild > /dev/null 2>&1
+          do_rebuild="false"
+          "$BROWSER" "$url"
+        fi
+        do_loop="true"
+        ;;
+      x|X )
+          do_rebuild="false"
         ;;
       * )
         redprint "Illegal key: '$key' --> try again"
+        do_rebuild="false"
         do_loop="true"
         ;;
     esac
   done
-  printf "%s" "Rebulding ... "
-  cmd_rebuild # > /dev/null 2>&1
-  printf "%s\n" "Done."
+  [ "$do_rebuild" = "true" ] && cmd_rebuild # > /dev/null 2>&1
 }
 
 # ----------------------------------------------------------------------------
@@ -315,12 +323,13 @@ cmd_delete () {
 cmd_rebuild () {
   [ $# -eq 0 ] || die "'publish' expected 0 parameters, but got $#"
 
+  blueprint "Rebuilding ..."
   get_all_posts | while read -r line; do
     post="${line#*: }"               # content/blog/2023-03/2023-03-12-post.md
     [ -z "$post" ] && die "Post '$post' does not exist"
 
     has_invalid_tags "$post" \
-      && { printf "%s" "$line"; yellowprint " <-- has invalid tag(s)"; continue; }
+      && { printf "%s" "$line"; redprint " <-- has invalid tag(s)"; continue; }
 
     postfile="${post##*/}"                              # 2023-03-12-post.md
     oldtitle="$(printf "%s" "${postfile%.*}" | cut -b12-)"     # post
@@ -333,14 +342,14 @@ cmd_rebuild () {
     fi
   done
 
-  ./makesite.py  > /dev/null
-  # generates local site in _site directory, which is where we point our local
+  # generate local site in _site directory, which is where we point our local
   # webserver to. If the local webserver root is somewhere else, then use
   # rsync (Note: wasteful since we now have 2 copies of the site)
   # [ -z "$LOCAL_WWW" ] && die "Set 'LOCAL_WWW=' in 'params.json'"
   # rsync --delete -rtzvcl "$d_site/" "${LOCAL_WWW}/${d_site}"  # -ravc
   # Two other alternatives are (1) _site is a symbolic link, or (2) change
   # makesite.py to output directly into the local webserver root directory
+  ./makesite.py  > /dev/null
 }
 
 # ----------------------------------------------------------------------------
@@ -377,7 +386,6 @@ cat <<- EOF
 	    "$pgm" tags <pattern>                     [case sensitive]
 	    "$pgm" publish
 	    "$pgm" rebuild
-	    "$pgm" test <n>
 	    "$pgm" help
 EOF
 }
