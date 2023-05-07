@@ -5,7 +5,7 @@
 # Copyright (c) 2022-2023 zrudyt zrudyt@hotmail.com>
 # All rights reserved
 #
-# This software is a derivative of the original makesite.py.
+# This software is a derivative of the original makesite.py
 # The license text of the original makesite.py is included below.
 #
 # Copyright (c) 2018 Sunaina Pai
@@ -59,9 +59,14 @@ def fwrite(filename, text):
         f.write(text)
 
 
+def err(msg, *args):
+    """Log message with specified arguments."""
+    sys.stderr.write("ERROR: " + msg.format(*args) + '\n')
+
+
 def log(msg, *args):
     """Log message with specified arguments."""
-    sys.stderr.write(msg.format(*args) + '\n')
+    print(msg.format(*args))
 
 
 def truncate(text, words=25):
@@ -118,7 +123,7 @@ def read_content(filename):
             import commonmark
             text = commonmark.commonmark(text)
         except ImportError as e:
-            log('WARNING: Cannot render Markdown in {}: {}', filename, str(e))
+            err('WARNING: Cannot render Markdown in {}: {}', filename, str(e))
 
     # Update the dictionary with content and RFC 2822 date.
     content.update({
@@ -229,7 +234,7 @@ def make_list_alltags(blogdir, dst, layout, **params):
     html = "<!-- title: All tags -->\n<h1>All tags</h1>\n<p>\n  <ul>\n"
     for tag in d:
         n = len(d[tag]) - 1
-        nstr = f"{n} posts" if n > 1 else f"1 post"
+        nstr = f"{n} posts" if n > 1 else "1 post"
         tagurl = f"/{blogdir}/tag_{tag}.html"
         html += f'    <li><a href="{tagurl}">{tag}</a> : {nstr}\n'
     html += "  </ul>\n</p>"
@@ -239,7 +244,20 @@ def make_list_alltags(blogdir, dst, layout, **params):
     return
 
 
-def main():
+def main(argv):
+    rootdir = argv[1] if len(argv) == 2 else "."
+    try:
+        os.chdir(rootdir)
+        if (
+                not os.path.isdir('content') or not os.path.isdir('layout') or
+                not os.path.isdir('static') or not os.path.isdir('_site')
+                ):
+            err(f"Root directory '{rootdir}' not a makesite layout")
+            sys.exit(1)
+    except FileNotFoundError:
+        err(f"Root directory '{rootdir}' does not exist")
+        sys.exit(1)
+
     # Create a new _site directory from scratch
     if os.path.isdir('_site'):
         shutil.rmtree('_site')
@@ -288,7 +306,7 @@ def main():
 
         # Check if source content directory exists
         if not os.path.isdir(f"content/{blog['dir']}"):
-            log("WARNING: directory does not exist: content/{}", blog['dir'])
+            err(f"WARNING: directory does not exist: content/", blog['dir'])
 
         # Create blog
         blog_posts = make_pages(f"content/{blog['dir']}/**/*",
@@ -312,7 +330,7 @@ def main():
 
         # Create page with consolidated list of all tags
         make_list_alltags(blog['dir'], f"_site/{blog['dir']}/alltags.html",
-                     page_layout, **params)
+                          page_layout, **params)
 
         # Create RSS feed
         make_list(blog_posts, f"_site/{blog['dir']}/rss.xml",
@@ -325,4 +343,4 @@ _test = None
 
 
 if __name__ == '__main__':
-    main()
+    main(sys.argv)
