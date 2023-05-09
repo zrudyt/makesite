@@ -81,16 +81,16 @@ set -o nounset
 # ----------------------------------------------------------------------------
 #   U T I L I T Y   F U N C T I O N S
 # ----------------------------------------------------------------------------
-redprint ()    { printf "\033[1;31m%s\033[0m\n" "$1" >&2; }
-greenprint ()  { printf "\033[0;32m%s\033[0m\n" "$1" >&2; }
-yellowprint () { printf "\033[0;33m%s\033[0m\n" "$1" >&2; }
-blueprint ()   { printf "\033[0;34m%s\033[0m\n" "$1" >&2; }
-cyanprint ()   { printf "\033[0;36m%s\033[0m\n" "$1" >&2; }
-ghostprint ()  { printf "\033[0;30m%s\033[0m\n" "$1" >&2; }
-prompt ()      { printf "\033[1;32m%s: \033[0m" "$1" >&2; }  # no \n at EOL
-promptlite ()  { printf "\033[0;32m%s: \033[0m" "$1" >&2; }  # no \n at EOL
+redprint ()    { printf "\033[1;31m%s\033[0m\n" "$*" >&2; }
+greenprint ()  { printf "\033[0;32m%s\033[0m\n" "$*" >&2; }
+yellowprint () { printf "\033[0;33m%s\033[0m\n" "$*" >&2; }
+blueprint ()   { printf "\033[0;34m%s\033[0m\n" "$*" >&2; }
+cyanprint ()   { printf "\033[0;36m%s\033[0m\n" "$*" >&2; }
+ghostprint ()  { printf "\033[0;30m%s\033[0m\n" "$*" >&2; }
+prompt ()      { printf "\033[1;32m%s: \033[0m" "$*" >&2; }  # no \n at EOL
+promptlite ()  { printf "\033[0;32m%s: \033[0m" "$*" >&2; }  # no \n at EOL
 
-die () { redprint "ERROR: $1"; exit 1; }
+die () { redprint "ERROR: $*"; exit 1; }
 
 # ----------------------------------------------------------------------------
 #   fdfind -t f -c never -e md -e html . "$d_blog" "$d_drafts" if installed
@@ -100,6 +100,28 @@ get_all_posts () {
     | sort \
     | sed "s/^\.\///" \
     | nl -s': ' -w4
+}
+
+# ----------------------------------------------------------------------------
+get_all_titles () {
+  pat='<!-- title: '
+  find "$d_blog" "$d_drafts" -type f \( -iname "*\.md" -o -iname "*\.html" \) \
+    | sort \
+    | sed "s/^\.\///" \
+    | nl -s':' \
+    | while read -r line; do
+        post="${line#*:}"
+        slug="$(echo "${post##*/}" | cut -b-10)"
+        case "$post" in
+          *$d_blog*)
+            printf "%3d:          %-11s " "${line%%:*}" "$slug"
+            ;;
+          *$d_drafts*)
+            printf "%3d: (drafts) %-11s " "${line%%:*}" "$slug"
+            ;;
+        esac
+        tac "$post" | grep -m1 "$pat" 2>/dev/null | sed "s/$pat\(.*\) -->/\\1/"
+      done
 }
 
 # ----------------------------------------------------------------------------
@@ -116,9 +138,9 @@ is_id () {
 
 # ----------------------------------------------------------------------------
 extract_title_from_post () {
-  token='<!-- title: '
+  pat='<!-- title: '
   is_id "$1" && post="$(get_post_by_id "$1")"
-  t="$(grep -m1 "$token" "$1" 2> /dev/null | sed "s/$token\(.*\) -->/\\1/")"
+  t="$(tac "$1" | grep -m1 "$pat" 2> /dev/null | sed "s/$pat\(.*\) -->/\\1/")"
   # sanitize string
   printf "%s" "$t" \
     | sed -e 's/[^A-Za-z0-9_-]/-/g' -e 's/-\+/-/g' -e 's/-$//' -e 's/^-//' \
@@ -278,9 +300,9 @@ cmd_list () {
   [ $# -lt 2 ] || die "'list' expected 0 or 1 parameter, but got $#"
 
   if [ $# -eq 1 ]; then
-    get_all_posts | grep -i "$1"
+    get_all_titles | grep -i "$1"
   else
-    get_all_posts
+    get_all_titles
   fi
 }
 
