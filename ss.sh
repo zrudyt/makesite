@@ -99,34 +99,26 @@ get_all_posts () {
   find "$d_blog" "$d_drafts" -type f \( -iname "*\.md" -o -iname "*\.html" \) \
     | sort \
     | sed "s/^\.\///" \
-    | nl -s': ' -w4
+    | nl -s':' -w1
 }
 
 # ----------------------------------------------------------------------------
 get_all_titles () {
-  pat='<!-- title: '
-  find "$d_blog" "$d_drafts" -type f \( -iname "*\.md" -o -iname "*\.html" \) \
-    | sort \
-    | sed "s/^\.\///" \
-    | nl -s':' \
-    | while read -r line; do
-        post="${line#*:}"
-        slug="$(echo "${post##*/}" | cut -b-10)"
-        case "$post" in
-          *$d_blog*)
-            printf "%3d:          %-11s " "${line%%:*}" "$slug"
-            ;;
-          *$d_drafts*)
-            printf "%3d: (drafts) %-11s " "${line%%:*}" "$slug"
-            ;;
-        esac
-        tac "$post" | grep -m1 "$pat" 2>/dev/null | sed "s/$pat\(.*\) -->/\\1/"
-      done
+  pat="<!-- title: "
+  get_all_posts | while read -r line; do
+    post="${line#*:}"
+    slug="$(echo "${post##*/}" | cut -b-10)"
+    case "$post" in
+      *$d_blog*)   printf "%3d:         %-11s " "${line%%:*}" "$slug"  ;;
+      *$d_drafts*) printf "%3d: (draft) %-11s " "${line%%:*}" "$slug"  ;;
+    esac
+    tac "$post" | grep -m1 "$pat" 2>/dev/null | sed "s/$pat\(.*\) -->/\\1/"
+  done
 }
 
 # ----------------------------------------------------------------------------
 get_post_by_id () {
-  get_all_posts | sed -e "/^ *$1: /!d" -e "s/^.*: //"
+  get_all_posts | sed -e "/^$1:/!d" -e "s/^[0-9]\+://"
 }
 
 # ----------------------------------------------------------------------------
@@ -255,6 +247,7 @@ do_actions () {
 cmd_edit () {
   [ $# -eq 1 ] || die "'edit' expected 1 parameter, but got $#"
 
+  set -x
   post="$1"
   is_id "$1" && post="$(get_post_by_id "$1")"
   [ -n "$post" ] || die "Post $1 does not exist"
@@ -312,7 +305,7 @@ cmd_search () {
 
   get_all_posts | while read -r line; do
     id="${line%%:*}"
-    post="${line#*: }"
+    post="${line#*:}"
     match="$(grep "$1" "$post" | sed "s/^/   /")"
     if [ -n "$match" ]; then
       greenprint "    ${id}: ${post}"
@@ -327,7 +320,7 @@ cmd_tags () {
 
   get_all_posts | while read -r line; do
     id="${line%%:*}"
-    post="${line#*: }"
+    post="${line#*:}"
     match="$(grep "<!-- tags:.* $1 .*-->" "$post" | sed "s/^/       /")"
     [ -n "$match" ] && printf "%4d: %s:\n" "$id" "$post"
   done
@@ -347,7 +340,7 @@ cmd_rebuild () {
 
   blueprint "Rebuilding ..."
   get_all_posts | while read -r line; do
-    post="${line#*: }"               # content/blog/2023-03/2023-03-12-post.md
+    post="${line#*:}"               # content/blog/2023-03/2023-03-12-post.md
     [ -z "$post" ] && die "Post '$post' does not exist"
 
     has_invalid_tags "$post" \
