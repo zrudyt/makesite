@@ -56,13 +56,15 @@ h1 {
 }
 
 h2 {
-	font-size: 1.25em;
+	margin-top: 2em;
+	margin-bottom: 1.5em;
+	font-size: 1.3em;
 	color: #00BBDD;
 }
 
 h3 {
 	font-size: 1.1em;
-	color: #00AABB;
+	color: #FFFFFF;
 }
 
 a {
@@ -84,7 +86,7 @@ pre {
 	border: 1px solid lime;
 	border-radius: 14px;
 	padding: 1em;
-	margin: 1em;
+	margin: 0em;
 	white-space: pre-wrap;
 }
 
