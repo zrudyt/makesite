@@ -107,10 +107,11 @@ get_all_titles () {
   pat="<!-- title: "
   get_all_posts | while read -r line; do
     post="${line#*:}"
+    id="${line%%:*}"
     slug="$(echo "${post##*/}" | cut -b-10)"
     case "$post" in
-      *$d_blog*)   printf "%3d:         %-11s " "${line%%:*}" "$slug"  ;;
-      *$d_drafts*) printf "%3d: (draft) %-11s " "${line%%:*}" "$slug"  ;;
+      *$d_blog*)   printf "%3d:         %-11s " "$id" "$slug"  ;;
+      *$d_drafts*) printf "%3d: (draft) %-11s " "$id" "$slug"  ;;
     esac
     tac "$post" | grep -m1 "$pat" 2>/dev/null | sed "s/$pat\(.*\) -->/\\1/"
   done
@@ -247,7 +248,6 @@ do_actions () {
 cmd_edit () {
   [ $# -eq 1 ] || die "'edit' expected 1 parameter, but got $#"
 
-  set -x
   post="$1"
   is_id "$1" && post="$(get_post_by_id "$1")"
   [ -n "$post" ] || die "Post $1 does not exist"
