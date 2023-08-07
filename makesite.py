@@ -172,18 +172,18 @@ def make_pages(src, dst, layout, **params):
 
 
 def process_tags(src_path, dst_path, **params):
-    dpp = Path(dst_path).parts
-    if len(dpp) < 4 or 'tags' not in params:
+    dst_path_parts = Path(dst_path).parts
+    if 'tags' not in params:
         return ""
     tags_html = '<p>Tags:'
-    for t in params.get('tags').split(' '):
-        if t not in params['alltags']:
-            params['alltags'][t] = {}
-        tagfile_web = f"/{dpp[1]}/tag_{t}.html"
-        tagfile_local = f"{dpp[0]}/{tagfile_web}"
-        params['alltags'][t]['url'] = tagfile_local
-        tags_html += f'&nbsp;&nbsp;<a href="{tagfile_web}">{t}</a>'
-        params['alltags'][t][dst_path] = params['title']
+    for tag in params.get('tags').split(' '):
+        if tag not in params['alltags']:
+            params['alltags'][tag] = {}
+        tagfile_web = f"/{dst_path_parts[1]}/tag_{tag}.html"
+        tagfile_local = f"{dst_path_parts[0]}/{tagfile_web}"
+        params['alltags'][tag]['url'] = tagfile_local
+        tags_html += f'&nbsp;&nbsp;<a href="{tagfile_web}">{tag}</a>'
+        params['alltags'][tag][dst_path] = params['title']
     tags_html += '</p>'
     return tags_html
 
@@ -249,10 +249,11 @@ def main(argv):
     try:
         os.chdir(rootdir)
         if (
-                not os.path.isdir('content') or not os.path.isdir('layout') or
-                not os.path.isdir('static') or not os.path.isdir('_site')
+                not os.path.isdir('content') or
+                not os.path.isdir('layout') or
+                not os.path.isdir('static')
                 ):
-            err(f"Root directory '{rootdir}' not a makesite layout")
+            err(f"Root directory '{rootdir}' not a makesite directory")
             sys.exit(1)
     except FileNotFoundError:
         err(f"Root directory '{rootdir}' does not exist")
@@ -297,6 +298,8 @@ def main(argv):
     make_pages('content/_index.html', '_site/index.html',
                page_layout, **params)
     make_pages('content/[!_]*.html', '_site/{{ slug }}/index.html',
+               page_layout, **params)
+    make_pages('content/[!_]*.md', '_site/{{ slug }}/index.html',
                page_layout, **params)
 
     # loop through each blog defined in params
