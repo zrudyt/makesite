@@ -98,13 +98,13 @@ def read_content(filename):
     text = fread(filename)
 
     # Read metadata and save it in a dictionary.
-    date_slug = os.path.basename(filename).split('.')[0]
-    match = re.search(r'^(?:(\d\d\d\d-\d\d-\d\d)-)?(.+)$', date_slug)
-    yy_mm_dd = match.group(1) or '1970-01-01'
+    slug = os.path.basename(filename).split('.')[0]
+    match = re.search(r'<!-- +created: +(.+?) +-->', text)
+    yy_mm_dd = match.group(1) if match else '1970-01-01'
     content = {
         'date': yy_mm_dd,
         'subdir': f'{yy_mm_dd[:7]}',
-        'slug': match.group(2)
+        'slug': slug
     }
 
     # Read headers.
@@ -165,7 +165,7 @@ def make_pages(src, dst, layout, **params):
                                                 **page_params)
         output = render(layout, **page_params)
 
-        log('Rendering {} => {} ...', src_path, dst_path)
+        log('Rendering {} => {}', src_path, dst_path)
         fwrite(dst_path, output)
 
     return sorted(items, key=lambda x: x['date'], reverse=True)
