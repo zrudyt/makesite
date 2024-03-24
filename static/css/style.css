@@ -1,29 +1,37 @@
 /* General */
 html {
-	background: black;
-	padding-bottom: 50px; /* amount of white space after footer to max scroll */
+	padding-bottom: 0px; /* amount of white space after footer to max scroll */
 }
 
 /*
 body {
-	margin: 0;
-	line-height: 1.5em;
-	color: #333333;
 	font-family: helvetica, arial, sans-serif;
+	width: 950px;
+	max-width: 950px;
+	background: #011;
+	color: #ccc;
+	margin-top: 20px;
+	line-height: 1.5em;
+	border: thin solid #E0E0E0;
+}
+.center {
+  margin: auto;
+  width: 50%;
+  border: 3px solid green;
+  padding: 10px;
 }
 */
 
 body {
 	font-family: helvetica, arial, sans-serif;
+	background: #011;
+	color: #ccc;
 	max-width: 950px;
 	margin-left: auto;
 	margin-right: auto;
-	margin-top: 30px;
-	background: #011;
-	color: #CCC;
-	border-style: solid;
-	border-width: 5px;
-	border-color: #555;
+	margin-top: 20px;
+	line-height: 1.5em;
+	border: 2px solid #555;
 }
 
 main {
@@ -63,7 +71,7 @@ h2 {
 }
 
 h3 {
-	font-size: 1.1em;
+	font-size: 1.2em;
 	color: #FFFFFF;
 }
 
@@ -101,7 +109,7 @@ code:not(pre code) {
 
 /* Single column layout */
 nav section, header section, main, footer section {
-	max-width: 40em;
+	max-width: 750px;/* was: 40em; */
 	margin-left: auto;
 	margin-right: auto;
 	padding: 0 0.5em;
@@ -136,11 +144,12 @@ nav a:hover, nav a:active {
 
 /* Footer */
 footer {
-	background: black; /* was #F0F0F0; */
+	background: #011;
 	border-top: thin solid #E0E0E0;
 	margin-top: 2em;
-	padding: 1em 0;
-	box-shadow: 0 100vh 0 100vh #F0F0F0;
+	padding-top: 0em;
+	padding-bottom: 0.5em;
+	/* box-shadow: 0 100vh 0 100vh #F0F0F0; */
 	text-align: center;
 }
 
