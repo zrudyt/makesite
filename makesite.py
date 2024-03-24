@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # The MIT License (MIT)
 #
@@ -98,13 +98,16 @@ def read_content(filename):
     text = fread(filename)
 
     # Read metadata and save it in a dictionary.
-    slug = os.path.basename(filename).split('.')[0]
     match = re.search(r'<!-- +created: +(.+?) +-->', text)
-    yy_mm_dd = match.group(1) if match else '1970-01-01'
+    if match:
+        yymmdd = match.group(1)
+    else:
+        ts_epoch = os.path.getctime(filename)
+        yymmdd = datetime.datetime.fromtimestamp(ts_epoch).strftime('%Y-%m-%d')
     content = {
-        'date': yy_mm_dd,
-        'subdir': f'{yy_mm_dd[:7]}',
-        'slug': slug
+        'date': yymmdd,
+        'subdir': f'{yymmdd[:7]}',
+        'slug': os.path.basename(filename).split('.')[0]
     }
 
     # Read headers.
