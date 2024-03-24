@@ -98,16 +98,24 @@ def read_content(filename):
     text = fread(filename)
 
     # Read metadata and save it in a dictionary.
-    match = re.search(r'<!-- +created: +(.+?) +-->', text)
+    date_slug = os.path.basename(filename).split('.')[0]
+    match = re.search(r'^(\d\d\d\d-\d\d-\d\d)-(.+)$', date_slug)
+    created = re.search(r'<!-- +created: +(.+?) +-->', text)
     if match:
         yymmdd = match.group(1)
+        slug = match.group(2)
+    elif created:
+        yymmdd = created.group(1)
+        slug = date_slug
     else:
         ts_epoch = os.path.getctime(filename)
         yymmdd = datetime.datetime.fromtimestamp(ts_epoch).strftime('%Y-%m-%d')
+        slug = date_slug
+
     content = {
         'date': yymmdd,
         'subdir': f'{yymmdd[:7]}',
-        'slug': os.path.basename(filename).split('.')[0]
+        'slug': slug
     }
 
     # Read headers.
